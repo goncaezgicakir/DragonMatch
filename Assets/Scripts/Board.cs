@@ -1,5 +1,7 @@
 ﻿using UnityEngine;
 using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
 
 public class Board : MonoBehaviour {
 
@@ -7,18 +9,18 @@ public class Board : MonoBehaviour {
     public int width;
     public int height;
     public int borderSize;
+    public float swapTime = 0.5f;
 
     public GameObject tilePrefab;
     public GameObject[] gamePiecesPrefabs;
 
-    public float swapTime = 0.5f;
 
     //private variables
     Tile[,] m_allTiles;
     GamePiece[,] m_allGamePieces;
-
     Tile m_clickedTile;
     Tile m_targetTile;
+
 
     //main
     void Start () 
@@ -29,6 +31,7 @@ public class Board : MonoBehaviour {
         SetupTiles();
         SetupCamera();  
         FillRandom();
+        HighlightMatches();
     }
         
     //method to set tile coordinates
@@ -62,8 +65,7 @@ public class Board : MonoBehaviour {
         Camera.main.orthographicSize = (verticalSize > horizontalSize) ? verticalSize : horizontalSize;
     
     }
-
-
+        
     //method to get a random GamePiece 
     GameObject GetRandomGamePiece(){
 
@@ -76,8 +78,7 @@ public class Board : MonoBehaviour {
 
         return gamePiecesPrefabs[randomIdx];
     }
-
-
+        
     //method to place the GamePiece object to specified (x,y) coordinate
     public void PlaceGamePiece(GamePiece gamePiece, int x, int y){
 
@@ -101,8 +102,7 @@ public class Board : MonoBehaviour {
         gamePiece.SetCoord(x, y);
 
     }
-
-
+        
     //method to check gamePieces still in range
     bool IsWithinBounds(int x, int y)
     {
@@ -187,6 +187,192 @@ public class Board : MonoBehaviour {
         return false;
     }
 
+    //method to find matched game pieces
+    List<GamePiece> FindMatches(int startX, int startY, Vector2 searchDirection, int minLength = 3)
+    {
+        List<GamePiece> matches = new List<GamePiece>();
+        GamePiece startPiece = null;
 
+        if(IsWithinBounds(startX, startY))
+        {
+            startPiece = m_allGamePieces[startX, startY];
+        }
+
+        //add the first piece to matches list
+        if (startPiece != null)
+        {
+            matches.Add(startPiece);
+        }
+        else
+        {
+            return null;
+        }
+
+        int nextX;
+        int nextY;
+
+        //max value of the board length
+        int maxValue = (width > height) ? width : height;
+
+        for (int i = 1; i < maxValue - 1; i++)
+        {
+            //get the next piece coordinates
+            nextX = startX + (int)Mathf.Clamp(searchDirection.x, -1, 1) * i;
+            nextY = startY + (int)Mathf.Clamp(searchDirection.y, -1, 1) * i;
+
+            if (!IsWithinBounds(nextX, nextY))
+            {
+                break;
+            }
+
+            //get the next piece
+            GamePiece nextPiece = m_allGamePieces[nextX, nextY];
+
+            //add this piece to matches if it is identical with the previous one and not already added to matches list 
+            if (nextPiece.matchValue == startPiece.matchValue && !matches.Contains(nextPiece))
+            {
+                matches.Add(nextPiece);
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        //return the macthes list
+        if (matches.Count >= minLength)
+        {
+            return matches;
+        }
+
+        //no matched pieces, return null
+        return null;
+    }
+
+    //method to find vertically matched game pieces
+    List<GamePiece> FindVerticalMatches(int startX, int startY, int minLength = 3)
+    {   
+        //find upward matches by moving +1 on y axis
+        List<GamePiece> upwardMatches = FindMatches(startX, startY, new Vector2(0, -1), 2);
+        //find downward matches by moving -1 on y axis
+        List<GamePiece> downwardMatches = FindMatches(startX, startY, new Vector2(0, -1), 2);
+
+        if (upwardMatches == null)
+        {
+            upwardMatches = new List<GamePiece>();
+        }
+
+        if (downwardMatches == null)
+        {
+            downwardMatches = new List<GamePiece>();
+        }
+
+        /*
+        //combine matches lists
+        foreach (GamePiece piece in downwardMatches)
+        {
+            if (!upwardMatches.Contains(piece))
+            {
+                upwardMatches.Add(piece);
+            }
+        }
+
+        //if there is enough matches return the matches list, else null
+        return (upwardMatches.Count >= minLength) ? upwardMatches : null;
+        */
+
+        //combine matches lists
+        var combinedMatches = upwardMatches.Union(downwardMatches).ToList();
+        //if there is enough matches return the matches list, else null
+
+        return (combinedMatches.Count >= minLength) ? combinedMatches : null;
+    }
+
+    //method to find horizontally matched game pieces
+    List<GamePiece> FindHorizontalMatches(int startX, int startY, int minLength = 3)
+    {   
+        //find left matches by moving -1 on x axis
+        List<GamePiece> leftMatches = FindMatches(startX, startY, new Vector2(-1, 0), 2);
+        //find right matches by moving +11 on x axis
+        List<GamePiece> rightMatches = FindMatches(startX, startY, new Vector2(1, 0), 2);
+
+        if (leftMatches == null)
+        {
+            leftMatches = new List<GamePiece>();
+        }
+
+        if (rightMatches == null)
+        {
+            rightMatches = new List<GamePiece>();
+        }
+
+        //combine matches lists
+        var combinedMatches = rightMatches.Union(leftMatches).ToList();
+        //if there is enough matches return the matches list, else null
+
+        return (combinedMatches.Count >= minLength) ? combinedMatches : null;
+    }
+
+    //method to find matches and returning as a combined matches list 
+    List<GamePiece> FindMatchesAt(int x, int y, int minLength = 3)
+    {
+        List<GamePiece> horizMatches = FindHorizontalMatches(x,y,minLength);
+        List<GamePiece> vertMatches = FindVerticalMatches(x,y,minLength);
+
+        if (horizMatches == null)
+        {
+            horizMatches = new List<GamePiece>();
+        }
+
+        if (vertMatches == null)
+        {
+            vertMatches = new List<GamePiece>();
+        }
+        var combinedMatches = horizMatches.Union(vertMatches).ToList();
+        return combinedMatches;
+    }
+
+    //method to remove highlight on the given coordinated tile
+    void HighlightTileOff(int x, int y)
+    {
+        SpriteRenderer spriteRenderer = m_allTiles[x,y].GetComponent<SpriteRenderer>();
+        spriteRenderer.color = new Color(spriteRenderer.color.r, spriteRenderer.color.g, spriteRenderer.color.b, 0);
+    }
+
+    //method to highlight on the given coordinated tile
+    void HighlightTileOn(int x, int y, Color col)
+    {
+        SpriteRenderer spriteRenderer = m_allTiles[x, y].GetComponent<SpriteRenderer>();
+        spriteRenderer.color = col;
+    }
+
+    //method to find matched tiles and highlight them
+    void HighlightMatchesAt(int x, int y)
+    {
+        HighlightTileOff(x, y);
+        var combinedMatches = FindMatchesAt(x, y);
+
+        if (combinedMatches.Count > 0)
+        {
+            foreach (GamePiece piece in combinedMatches)
+            {
+                HighlightTileOn(piece.xIndex, piece.yIndex, piece.GetComponent<SpriteRenderer>().color);
+            }
+        }
+    }
+
+    //method to higlight all matched tiles at the hole board
+    void HighlightMatches()
+    {
+        for (int i = 0; i < width; i++)
+        {
+            for (int j = 0; j < height; j++)
+            {
+                HighlightMatchesAt(i, j);
+
+            }
+        }
+    }
+        
 
 }

@@ -3,17 +3,19 @@ using System.Collections;
 
 public class Tile : MonoBehaviour {
 
-
+    //public variables
     public int xIndex;
     public int yIndex;
 
+    //private variables
     Board m_board;
 
-	// Use this for initialization
+    //main
 	void Start () {
 	
 	}
 	
+    //method to init tile to board
     public void Init(int x, int y, Board board){
     
         xIndex = x;
@@ -21,6 +23,7 @@ public class Tile : MonoBehaviour {
         m_board = board;
     }
 
+    //method to call mouse click on board
     void OnMouseDown()
     {
         if (m_board != null)
@@ -29,6 +32,7 @@ public class Tile : MonoBehaviour {
         }
     }
 
+    //method to call mouse drag on board
     void OnMouseEnter()
     {
         if (m_board != null)
@@ -37,6 +41,7 @@ public class Tile : MonoBehaviour {
         }
     }
 
+    //method to call mouse release on board
     void OnMouseUp()
     {
         if (m_board != null)
