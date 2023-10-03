@@ -160,15 +160,46 @@ public class Board : MonoBehaviour {
         m_targetTile = null;
     }
 
-    //method to switching game pieces
+    //method to switching game piece to get a match
     void SwitchTiles(Tile clickedTile, Tile targetTile)
     {
+        StartCoroutine(SwitchTilesRoutine(clickedTile, targetTile));
+    }
+
+    //method to switching game pieces and highlighting if it is a match
+    IEnumerator SwitchTilesRoutine(Tile clickedTile, Tile targetTile)
+    {   
+        //get pieces
         GamePiece clickedPiece = m_allGamePieces[m_clickedTile.xIndex, m_clickedTile.yIndex];
         GamePiece targetPiece = m_allGamePieces[m_targetTile.xIndex, m_targetTile.yIndex];            
 
-        clickedPiece.Move(targetTile.xIndex, targetTile.yIndex, swapTime);
-        targetPiece.Move(clickedTile.xIndex, clickedTile.yIndex, swapTime);
+        if(targetPiece != null && clickedPiece != null)
+        {
+            //move pieces
+            clickedPiece.Move(targetTile.xIndex, targetTile.yIndex, swapTime);
+            targetPiece.Move(clickedTile.xIndex, clickedTile.yIndex, swapTime);
+                
+            //waits for swap time befor highlighting matches
+            yield return new WaitForSeconds(swapTime);
 
+            //find matches at the new coordinates of the tiles
+            List<GamePiece> clickedPieceMatches = FindMatchesAt(clickedTile.xIndex, clickedTile.yIndex);
+            List<GamePiece> targetPieceMatches = FindMatchesAt(targetTile.xIndex, targetTile.yIndex);
+
+            //if there is no match, move the pieces back to their old coordinates
+            if (targetPieceMatches.Count == 0 & clickedPieceMatches.Count == 0)
+            {
+                clickedPiece.Move(clickedTile.xIndex, clickedTile.yIndex, swapTime);
+                targetPiece.Move(targetTile.xIndex, targetTile.yIndex, swapTime);
+            }
+
+            //waits for swap time befor highlighting matches
+            yield return new WaitForSeconds(swapTime);
+
+            //highlight tiles if there is a match
+            HighlightMatchesAt(clickedTile.xIndex, clickedTile.yIndex);
+            HighlightMatchesAt(targetTile.xIndex, targetTile.yIndex);
+        }
     }
 
     //method to determine if the two tile is next to each other
