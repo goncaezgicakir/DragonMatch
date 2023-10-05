@@ -1,3 +1,8 @@
 ProjectSettings/
 Library/
 obj/
+*.info
+*.backup
+*.dll
+*.mdb
+*.info

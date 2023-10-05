@@ -30,8 +30,7 @@ public class Board : MonoBehaviour {
 
         SetupTiles();
         SetupCamera();  
-        FillRandom();
-        HighlightMatches();
+        FillBoard();
     }
         
     //method to set tile coordinates
@@ -108,22 +107,73 @@ public class Board : MonoBehaviour {
     {
         return (x >= 0 && x < width && y >= 0 && y < height); 
     }
-        
-    //methof to fill the board with random GamePiece objects
-    void FillRandom()
+
+    //method to create a random game piece at the given coordinate
+    GamePiece FillRandomAt(int x, int y)
     {   
+        //creates a ranom agme piece
+        GameObject randomPiece = Instantiate(GetRandomGamePiece(), Vector3.zero, Quaternion.identity) as GameObject;
+
+        if (randomPiece != null)
+        {
+            randomPiece.GetComponent<GamePiece>().Init(this);
+            PlaceGamePiece(randomPiece.GetComponent<GamePiece>(), x, y);
+            randomPiece.transform.parent = transform;
+            return randomPiece.GetComponent<GamePiece>();
+        }
+
+        return null;
+    }
+        
+    //method to determine is there a free matched game pieces while filling the board randomly
+    bool HasMatchOnFill(int x, int y, int minLength = 3)
+    {
+        //only check downwards and left since we are filling the board at that direction
+        List<GamePiece> leftMatches = FindMatches(x, y, new Vector2(-1,0), minLength);
+        List<GamePiece> downwardsMatches = FindMatches(x, y, new Vector2(0, -1), minLength);
+
+        if (leftMatches == null)
+        {
+            leftMatches = new List<GamePiece>();
+        }
+
+        if (downwardsMatches == null)
+        {
+            downwardsMatches = new List<GamePiece>();
+        }
+
+        return(leftMatches.Count > 0 || downwardsMatches.Count > 0);
+    }
+
+    //methof to fill the board with random GamePiece objects
+    void FillBoard()
+    {   
+        //TODO: make it constant 
+        int maxIteration = 100;
+        int iteration = 0;
+
         for (int i = 0; i < width; i++)
         {
             for (int j = 0; j < height; j++)
             {
-                GameObject randomPiece = Instantiate (GetRandomGamePiece(), Vector3.zero, Quaternion.identity) as GameObject;
-
-                if (randomPiece != null)
+                //create a random game piece
+                GamePiece piece = FillRandomAt(i, j);
+                iteration = 0;
+                //if there is a match while filling randomly
+                //clear the game piece and create another game piece
+                while (HasMatchOnFill(i, j))
                 {
-                    randomPiece.GetComponent<GamePiece>().Init(this);
-                    PlaceGamePiece(randomPiece.GetComponent<GamePiece>(), i, j);
-                    randomPiece.transform.parent = transform;
-                }
+                    ClearGamePieceAt(i, j);
+                    piece = FillRandomAt(i, j);
+                    iteration++;
+
+                    if (iteration >= maxIteration)
+                    {
+                        Debug.Log("break while loop - filling randomly--------------------------------");
+                        break;
+                    }
+                }                   
+                        
             }
         }
     }
@@ -192,13 +242,18 @@ public class Board : MonoBehaviour {
                 clickedPiece.Move(clickedTile.xIndex, clickedTile.yIndex, swapTime);
                 targetPiece.Move(targetTile.xIndex, targetTile.yIndex, swapTime);
             }
+            //if there is a match, clear those game pieces from board
+            else
+            {
+                //waits for swap time befor highlighting matches
+                yield return new WaitForSeconds(swapTime);
 
-            //waits for swap time befor highlighting matches
-            yield return new WaitForSeconds(swapTime);
-
-            //highlight tiles if there is a match
-            HighlightMatchesAt(clickedTile.xIndex, clickedTile.yIndex);
-            HighlightMatchesAt(targetTile.xIndex, targetTile.yIndex);
+                ClearGamePieceAt(clickedPieceMatches);
+                ClearGamePieceAt(targetPieceMatches);
+                //highlight tiles if there is a match
+                //HighlightMatchesAt(clickedTile.xIndex, clickedTile.yIndex);
+                //HighlightMatchesAt(targetTile.xIndex, targetTile.yIndex);
+            }
         }
     }
 
@@ -259,14 +314,21 @@ public class Board : MonoBehaviour {
             //get the next piece
             GamePiece nextPiece = m_allGamePieces[nextX, nextY];
 
-            //add this piece to matches if it is identical with the previous one and not already added to matches list 
-            if (nextPiece.matchValue == startPiece.matchValue && !matches.Contains(nextPiece))
+            if (nextPiece == null)
             {
-                matches.Add(nextPiece);
+                break;
             }
             else
             {
-                break;
+                //add this piece to matches if it is identical with the previous one and not already added to matches list 
+                if (nextPiece.matchValue == startPiece.matchValue && !matches.Contains(nextPiece))
+                {
+                    matches.Add(nextPiece);
+                }
+                else
+                {
+                    break;
+                }
             }
         }
 
@@ -284,7 +346,7 @@ public class Board : MonoBehaviour {
     List<GamePiece> FindVerticalMatches(int startX, int startY, int minLength = 3)
     {   
         //find upward matches by moving +1 on y axis
-        List<GamePiece> upwardMatches = FindMatches(startX, startY, new Vector2(0, -1), 2);
+        List<GamePiece> upwardMatches = FindMatches(startX, startY, new Vector2(0, 1), 2);
         //find downward matches by moving -1 on y axis
         List<GamePiece> downwardMatches = FindMatches(startX, startY, new Vector2(0, -1), 2);
 
@@ -404,6 +466,41 @@ public class Board : MonoBehaviour {
             }
         }
     }
-        
+
+    //method to clear the game piece at the given coordinate
+    void ClearGamePieceAt(int x, int y)
+    {
+        GamePiece pieceToClear = m_allGamePieces[x, y];
+
+        if (pieceToClear != null)
+        {
+            m_allGamePieces[x, y] = null;
+            Destroy(pieceToClear.gameObject);
+        }
+
+        HighlightTileOff(x, y);
+    }
+
+    //method to clear the game pieces at the given list
+    void ClearGamePieceAt(List<GamePiece> gamePieces)
+    {
+        foreach (GamePiece piece in gamePieces)
+        {
+            ClearGamePieceAt(piece.xIndex, piece.yIndex);
+        }
+    }
+
+    //method to clear all game pieces on the board
+    void ClearBoard()
+    {
+        for (int i=0; i<width; i++)
+        {
+            for(int j=0; j<height; j++)
+            {
+                ClearGamePieceAt(i, j);
+            }
+        }
+    }
+
 
 }
