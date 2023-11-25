@@ -11,9 +11,10 @@ public class Board : MonoBehaviour {
     public int borderSize;
     public float swapTime = 0.5f;
 
-    public GameObject tilePrefab;
+    public GameObject tileNormalPrefab;
+    public GameObject tileObstaclePrefab;
     public GameObject[] gamePiecesPrefabs;
-
+    public StartingTile[] startingTiles;
 
     //private variables
     Tile[,] m_allTiles;
@@ -21,6 +22,18 @@ public class Board : MonoBehaviour {
     Tile m_clickedTile;
     Tile m_targetTile;
     bool m_playerSwitchingEnabled = true;
+
+
+    //container for obstacle tile management
+    [System.Serializable]
+    public class StartingTile
+    {
+        public GameObject tilePrefab;
+        public int x;
+        public int y;
+        public int z;
+    }
+
 
     //main
     void Start () 
@@ -33,26 +46,7 @@ public class Board : MonoBehaviour {
         //TODO: make constant
         FillBoard(10, 0.5f);
     }
-        
-    //method to set tile coordinates
-    void SetupTiles()
-    {
-        for (int i = 0; i < width; i++)
-        {
-            for (int j = 0; j < height; j++)
-            {
-                GameObject tile = Instantiate (tilePrefab, new Vector3(i, j, 0), Quaternion.identity) as GameObject;
 
-                tile.name = "Tile (" + i + "," + j + ")";
-
-                m_allTiles [i,j] = tile.GetComponent<Tile>();
-
-                tile.transform.parent = transform;
-
-                m_allTiles[i, j].Init(i, j, this);
-            }
-        }
-    }
 
     //method to set the camera on center to see board properly
     void SetupCamera(){
@@ -63,9 +57,51 @@ public class Board : MonoBehaviour {
         float horizontalSize = ( (float)width / 2f + (float)borderSize ) / aspectRatio;
 
         Camera.main.orthographicSize = (verticalSize > horizontalSize) ? verticalSize : horizontalSize;
-    
+
     }
+
+    //method to create obstacle and normal tiles randomly
+    void MakeTiles(GameObject prefab, int x, int y, int z=0)
+    {   
+        if(prefab != null)
+        {
+            GameObject tile = Instantiate(prefab, new Vector3(x, y, z), Quaternion.identity) as GameObject;
+            tile.name = "Tile (" + x + "," + y + ")";
+            m_allTiles[x, y] = tile.GetComponent<Tile>();
+            tile.transform.parent = transform;
+            m_allTiles[x, y].Init(x, y, this);
+        }
+
+    }
+
+    //method to set tile coordinates
+    void SetupTiles()
+    {
         
+        foreach(StartingTile sTile in startingTiles)
+        {
+            if(sTile != null)
+            {
+                MakeTiles(sTile.tilePrefab, sTile.x, sTile.y, sTile.z);
+            }
+
+        }
+
+
+        for (int i = 0; i < width; i++)
+        {
+            for (int j = 0; j < height; j++)
+            {
+
+                if(m_allTiles[i,j] == null)
+                {
+                    MakeTiles(tileNormalPrefab, i, j);
+                }
+               
+            }
+        }
+    }
+                                                
     //method to get a random GamePiece 
     GameObject GetRandomGamePiece(){
 
@@ -165,7 +201,7 @@ public class Board : MonoBehaviour {
             for (int j = 0; j < height; j++)
             {
 
-                if (m_allGamePieces[i, j] == null)
+                if (m_allGamePieces[i, j] == null && m_allTiles[i,j].tileType != TileType.Obstacle)
                 {
                     //create a random game piece
                     GamePiece piece = FillRandomAt(i, j, falseYOffset, moveTime);
@@ -473,15 +509,21 @@ public class Board : MonoBehaviour {
     //method to remove highlight on the given coordinated tile
     void HighlightTileOff(int x, int y)
     {
-        SpriteRenderer spriteRenderer = m_allTiles[x,y].GetComponent<SpriteRenderer>();
-        spriteRenderer.color = new Color(spriteRenderer.color.r, spriteRenderer.color.g, spriteRenderer.color.b, 0);
+        if(m_allTiles[x,y].tileType != TileType.Breakable)
+        {
+            SpriteRenderer spriteRenderer = m_allTiles[x,y].GetComponent<SpriteRenderer>();
+            spriteRenderer.color = new Color(spriteRenderer.color.r, spriteRenderer.color.g, spriteRenderer.color.b, 0);
+        }
     }
 
     //method to highlight on the given coordinated tile
     void HighlightTileOn(int x, int y, Color col)
     {
-        SpriteRenderer spriteRenderer = m_allTiles[x, y].GetComponent<SpriteRenderer>();
-        spriteRenderer.color = col;
+        if(m_allTiles[x,y].tileType != TileType.Breakable)
+        {
+            SpriteRenderer spriteRenderer = m_allTiles[x, y].GetComponent<SpriteRenderer>();
+            spriteRenderer.color = col;
+        }
     }
 
     //method to find matched tiles and highlight them
@@ -550,6 +592,31 @@ public class Board : MonoBehaviour {
         }
     }
 
+    //method to break the tile at the given coordinates
+    void BreakTileAt(int x, int y)
+    {
+        Tile tileToBreak = m_allTiles[x, y];
+
+        if (tileToBreak != null)
+        {
+            tileToBreak.BreakTile();
+        }
+
+    }
+
+    //method to break tiles at the given list
+    void BreakTileAt(List<GamePiece> gamePieces)
+    {
+        foreach (GamePiece piece in gamePieces)
+        {
+            if(piece != null)
+            {
+                //break tiles
+                BreakTileAt(piece.xIndex, piece.yIndex);
+            }
+        }
+    }
+
     //method to clear all game pieces on the board
     void ClearBoard()
     {
@@ -570,7 +637,7 @@ public class Board : MonoBehaviour {
         for (int i = 0; i < height; i++)
         {
             //found an empty space
-            if (m_allGamePieces[column, i] == null)
+            if (m_allGamePieces[column, i] == null  && m_allTiles[column, i].tileType != TileType.Obstacle)
             {
     
                 for (int j = i + 1; j < height; j++)
@@ -676,6 +743,8 @@ public class Board : MonoBehaviour {
         while (!isFinished)
         {
             ClearGamePieceAt(gamePieces);
+            BreakTileAt(gamePieces);
+
             //delay
             yield return new WaitForSeconds(0.25f);
             movingPieces = CollapseColumn(gamePieces);

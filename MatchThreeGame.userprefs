@@ -1,10 +1,10 @@
 ﻿<Properties StartupItem="Assembly-CSharp.csproj" RefactoringSettings.EnableRefactorings="True">
   <MonoDevelop.Ide.Workspace ActiveConfiguration="Debug" PreferredExecutionTarget="Unity.Instance.Unity Editor" />
-  <MonoDevelop.Ide.Workbench ActiveDocument="Assets\Scripts\Board.cs">
+  <MonoDevelop.Ide.Workbench ActiveDocument="Assets\Scripts\GamePiece.cs">
     <Files>
-      <File FileName="Assets\Scripts\Board.cs" Line="688" Column="14" />
-      <File FileName="Assets\Scripts\Tile.cs" Line="12" Column="5" />
-      <File FileName="Assets\Scripts\GamePiece.cs" Line="80" Column="27" />
+      <File FileName="Assets\Scripts\Board.cs" Line="502" Column="75" />
+      <File FileName="Assets\Scripts\Tile.cs" Line="117" Column="10" />
+      <File FileName="Assets\Scripts\GamePiece.cs" Line="22" Column="20" />
     </Files>
   </MonoDevelop.Ide.Workbench>
   <MonoDevelop.Ide.DebuggingService.Breakpoints>

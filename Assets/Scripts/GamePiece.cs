@@ -28,12 +28,11 @@ public class GamePiece : MonoBehaviour {
     {
         Yellow,
         Blue,
-        Magenta,
         Indigo,
         Green,
-        Teal,
+        DarkGreen,
         Red,
-        Cyan,
+        Lilac,
         Wild
 
     }
