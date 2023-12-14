@@ -8,7 +8,7 @@ public class GamePiece : MonoBehaviour {
     public int yIndex;
     public InterpType interpolation = InterpType.SmootherStep;
     public MatchValue matchValue;
-
+    
     //private variables
     Board m_board;
     bool m_isMoving = false;
@@ -24,7 +24,7 @@ public class GamePiece : MonoBehaviour {
     };
 
     //game piece match value types
-    public enum MatchValue
+    /*public enum MatchValue
     {
         Yellow,
         Blue,
@@ -35,6 +35,17 @@ public class GamePiece : MonoBehaviour {
         Lilac,
         Wild
 
+    }*/
+
+     public enum MatchValue
+    {
+        BlueEgg,
+        GreenEgg,
+        IndigoEgg,
+        LilacEgg,
+        OrangeEgg,
+        PinkEgg,
+        PurpleEgg
     }
 
 	//main
