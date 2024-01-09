@@ -1,2 +1,2 @@
-# MacthTreeGame
-Currently in development game that players need to match three or more identical objects.
+# Dragon Match 
+Developing a puzzle-casual mobile game focused on matching three or more identical dragon eggs. Designing and implementing core gameplay mechanics and matching algorithm. Actively working to introduce new components,features and level progression to enhance user engagement. Planing to publish in the stores upon completion.
