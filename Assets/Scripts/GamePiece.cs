@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using System.Linq.Expressions;
+using UnityEngine;
 using System.Collections;
 
 public class GamePiece : MonoBehaviour {
@@ -45,7 +46,8 @@ public class GamePiece : MonoBehaviour {
         LilacEgg,
         OrangeEgg,
         PinkEgg,
-        PurpleEgg
+        PurpleEgg,
+        None
     }
 
 	//main
@@ -151,6 +153,49 @@ public class GamePiece : MonoBehaviour {
         }
 
         m_isMoving = false;
+    }
+
+    public void ChangeColor(GamePiece pieceToMatch)
+    {
+        SpriteRenderer rendererToChange = GetComponent<SpriteRenderer>();
+
+        if(pieceToMatch != null)
+        {
+            SpriteRenderer rendererToMatch = GetComponent<SpriteRenderer>();
+
+            if(rendererToMatch != null && rendererToChange != null)
+            {
+                
+                switch(pieceToMatch.matchValue)
+                {
+                    case MatchValue.BlueEgg:
+                        rendererToChange.color = new Color32(128, 229, 255, 255);
+                        break;
+                    case MatchValue.GreenEgg:
+                        rendererToChange.color = new Color(36, 143, 36);
+                        break;
+                    case MatchValue.IndigoEgg:
+                        rendererToChange.color = new Color(0, 0, 204, 255);
+                        break;
+                    case MatchValue.LilacEgg:
+                        rendererToChange.color = new Color(191, 128, 255, 255);
+                        break;
+                    case MatchValue.OrangeEgg:
+                        rendererToChange.color = new Color(255, 128, 0, 255);
+                        break;
+                    case MatchValue.PinkEgg:
+                        rendererToChange.color = new Color(204, 0, 102, 255);
+                        break;
+                    case MatchValue.PurpleEgg:
+                        rendererToChange.color = new Color(204, 51, 255, 255);
+                        break;
+                    default:
+                        break;
+                }
+            }
+        }
+
+        matchValue = pieceToMatch.matchValue;
     }
 
 

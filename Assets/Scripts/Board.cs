@@ -10,31 +10,37 @@
         public int height;
         public int borderSize;
         public float swapTime = 0.5f;
-
+        public int fillYOffset = 10;
+        public float fillMoveTime = 0.5f;
         public GameObject tileNormalPrefab;
         public GameObject tileObstaclePrefab;
         public GameObject[] gamePiecesPrefabs;
-        public StartingTile[] startingTiles;
+        public GameObject adjacentBombPrefab;
+        public GameObject columnBombPrefab;
+        public GameObject rowBombPrefab;
+
+        public StartingObject[] startingTiles;
+        public StartingObject[] startingGamePieces;
 
         //private variables
         Tile[,] m_allTiles;
         GamePiece[,] m_allGamePieces;
         Tile m_clickedTile;
         Tile m_targetTile;
+        GameObject m_clickedTileBomb;
+        GameObject m_targetTileBomb;
         bool m_playerSwitchingEnabled = true;
         ParticleManager m_particleManager;
 
-
         //container for obstacle tile management
         [System.Serializable]
-        public class StartingTile
+        public class StartingObject
         {
-            public GameObject tilePrefab;
+            public GameObject prefab;
             public int x;
             public int y;
             public int z;
         }
-
 
         //main
         void Start () 
@@ -47,11 +53,11 @@
             m_particleManager = GameObject.FindWithTag("ParticleManager").GetComponent<ParticleManager>();
 
             SetupTiles();
+            SetupGamePieces();
             SetupCamera();  
             //TODO: make constant
-            FillBoard(10, 0.5f);
+            FillBoard(fillYOffset, fillMoveTime);
         }
-
 
         //method to set the camera on center to see board properly
         void SetupCamera(){
@@ -67,7 +73,7 @@
         //method to create obstacle and normal tiles randomly
         void MakeTiles(GameObject prefab, int x, int y, int z=0)
         {   
-            if(prefab != null)
+            if(prefab != null && IsWithinBounds(x, y))
             {       
                 GameObject tile = Instantiate(prefab, new Vector3(x, y, z), Quaternion.identity) as GameObject;
                 tile.name = "Tile (" + x + "," + y + ")";
@@ -78,15 +84,49 @@
 
         }
 
+        //method to create game piece
+        void MakeGamePiece(GameObject prefab, int x, int y, int falseYOffset = 0, float moveTime = 0.1f)
+        {
+            if (prefab != null && IsWithinBounds(x, y))
+            {
+                prefab.GetComponent<GamePiece>().Init(this);
+                PlaceGamePiece(prefab.GetComponent<GamePiece>(), x, y);
+
+                if (falseYOffset != 0)
+                {
+                    prefab.transform.position = new Vector3(x, y + falseYOffset, 0);
+                    prefab.GetComponent<GamePiece>().Move(x, y, moveTime);
+                }
+
+                prefab.transform.parent = transform;
+            }
+
+        }
+
+        //method to create bomb
+        GameObject MakeBomb(GameObject prefab, int x, int y)
+        {
+            if(prefab != null && IsWithinBounds(x,y))
+            {
+                GameObject bomb = Instantiate(prefab, new Vector3(x, y, 0), Quaternion.identity) as GameObject;
+                bomb.GetComponent<Bomb>().Init(this);
+                bomb.GetComponent<Bomb>().SetCoord(x,y);
+                bomb.transform.parent = transform;
+                return bomb;
+            }     
+
+            return null;       
+        }
+        
         //method to set tile coordinates
         void SetupTiles()
         {
             //set obstacle tiles
-            foreach(StartingTile sTile in startingTiles)
+            foreach(StartingObject sTile in startingTiles)
             {
                 if(sTile != null)
                 {
-                    MakeTiles(sTile.tilePrefab, sTile.x, sTile.y, sTile.z);
+                    MakeTiles(sTile.prefab, sTile.x, sTile.y, sTile.z);
                 }
 
             }
@@ -105,7 +145,20 @@
                 }
             }
         }
-                                                    
+
+        //method to set defaultly wanted starting game pieces   
+        void SetupGamePieces()
+        {
+            foreach (StartingObject sPiece in startingGamePieces)
+            {
+                if(sPiece != null)
+                {
+                    GameObject piece = Instantiate(sPiece.prefab, new Vector3(sPiece.x, sPiece.y, 0), Quaternion.identity) as GameObject;
+                    MakeGamePiece(piece, sPiece.x, sPiece.y, fillYOffset, fillMoveTime);
+                }
+            }
+        }                                    
+        
         //method to get a random GamePiece 
         GameObject GetRandomGamePiece(){
 
@@ -152,24 +205,13 @@
         //method to create a random game piece at the given coordinate
         GamePiece FillRandomAt(int x, int y, int falseYOffset = 0, float moveTime = 0.1f)
         {   
-            //creates a ranom agme piece
-            GameObject randomPiece = Instantiate(GetRandomGamePiece(), Vector3.zero, Quaternion.identity) as GameObject;
-
-            if (randomPiece != null)
+            if(IsWithinBounds(x,y))
             {
-                randomPiece.GetComponent<GamePiece>().Init(this);
-                PlaceGamePiece(randomPiece.GetComponent<GamePiece>(), x, y);
-
-                if (falseYOffset != 0)
-                {
-                    randomPiece.transform.position = new Vector3(x, y + falseYOffset, 0);
-                    randomPiece.GetComponent<GamePiece>().Move(x, y, moveTime);
-                }
-
-                randomPiece.transform.parent = transform;
+                //creates a ranom game piece
+                GameObject randomPiece = Instantiate(GetRandomGamePiece(), Vector3.zero, Quaternion.identity) as GameObject;
+                MakeGamePiece(randomPiece, x, y, falseYOffset, moveTime);
                 return randomPiece.GetComponent<GamePiece>();
             }
-
             return null;
         }
             
@@ -236,7 +278,7 @@
             if (m_clickedTile == null )
             {
                 m_clickedTile = tile;
-                Debug.Log("Clicked tile: " + tile.name);
+                //Debug.Log("Clicked tile: " + tile.name);
             }
         }
 
@@ -304,6 +346,27 @@
                         //waits for swap time befor highlighting matches
                         //delay
                         yield return new WaitForSeconds(swapTime);
+
+                        //drop a new bomb if there is more than 4 game pieces are matched
+                        Vector2 swapDirection = new Vector2(targetTile.xIndex - clickedTile.xIndex,targetTile.yIndex - clickedTile.yIndex);
+                        m_clickedTileBomb = DropBomb(clickedTile.xIndex, clickedTile.yIndex, swapDirection, clickedPieceMatches);
+                        m_targetTileBomb = DropBomb(targetTile.xIndex, targetTile.yIndex, swapDirection, targetPieceMatches);
+
+                        //change the clicked bomb's color
+                        if(m_clickedTileBomb != null && targetPiece != null)
+                        {
+                            GamePiece clickedBombPiece = m_clickedTileBomb.GetComponent<GamePiece>();
+                            clickedBombPiece.ChangeColor(targetPiece);
+                        }
+
+                        //change the target bomb's color
+                        if(m_targetTileBomb != null && clickedPiece != null)
+                        {
+                            GamePiece targetBombPiece = m_targetTileBomb.GetComponent<GamePiece>();
+                            targetBombPiece.ChangeColor(clickedPiece);
+                        }
+
+                        //clear and refill the board after a match
                         ClearAndRefillBoard(clickedPieceMatches.Union(targetPieceMatches).ToList());
                     }
                 }
@@ -510,6 +573,41 @@
             return combinedMatches;
         }
 
+        //method to find matches are corner in order to drop a bomb
+        bool IsCornerMatch(List<GamePiece> gamePieces)
+	{
+		bool vertical = false;
+		bool horizontal = false;
+		int xStart = -1;
+		int yStart = -1;
+
+		foreach (GamePiece piece in gamePieces)
+		{
+			if (piece !=null)
+			{
+				if (xStart == -1 || yStart == -1)
+				{
+					xStart = piece.xIndex;
+					yStart = piece.yIndex;
+					continue;
+				}
+
+				if (piece.xIndex != xStart && piece.yIndex == yStart)
+				{
+					horizontal = true;
+				}
+
+				if (piece.xIndex == xStart && piece.yIndex != yStart)
+				{
+					vertical = true;
+				}
+			}
+		}
+
+		return (horizontal && vertical);
+
+	}
+
         //method to remove highlight on the given coordinated tile
         void HighlightTileOff(int x, int y)
         {
@@ -597,8 +695,6 @@
                     //call the clear effect
                     if (m_particleManager != null)
                     {
-                    Debug.LogWarning("ClearAt -> x:" + piece.xIndex + " y: " + piece.yIndex);
-
                         m_particleManager.ClearPieceFXAt(piece.xIndex, piece.yIndex);
                     }
                 }
@@ -616,8 +712,6 @@
                 //we need to call this previously, because BreakTile method decrements the breakableValue
                 if (m_particleManager != null)
                 {
-                Debug.LogWarning("BreakTileAt -> x:" + x + " y: " + y);
-
                     m_particleManager.BreakPieceFXAt(tileToBreak.breakableValue, x, y, 0);
                 }
 
@@ -635,18 +729,6 @@
                 {
                     //break tiles
                     BreakTileAt(piece.xIndex, piece.yIndex);
-                }
-            }
-        }
-
-        //method to clear all game pieces on the board
-        void ClearBoard()
-        {
-            for (int i=0; i<width; i++)
-            {
-                for(int j=0; j<height; j++)
-                {
-                    ClearGamePieceAt(i, j);
                 }
             }
         }
@@ -716,6 +798,36 @@
             return columns;
         }
 
+        //method to clear all game pieces on the board
+        void ClearBoard()
+        {
+            for (int i=0; i<width; i++)
+            {
+                for(int j=0; j<height; j++)
+                {
+                    ClearGamePieceAt(i, j);
+                }
+            }
+        }
+       
+        //method to check all moving pieces are collapsed
+        bool isCollapsed(List<GamePiece> gamePieces)
+        {
+            foreach (GamePiece piece in gamePieces)
+            {
+                if (piece != null)
+                {
+                    //check the game pieces's y locationa and internal location difference 
+                    //to see it is collapsed or not
+                    if (piece.transform.position.y - (float)piece.yIndex > 0.001f)
+                    {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+       
         //method to clear and refill the game board
         void ClearAndRefillBoard(List<GamePiece> gamePieces)
         {
@@ -764,8 +876,25 @@
 
             while (!isFinished)
             {
+                //add the bombed game pieces to default ones clear them too
+                List<GamePiece> bombedPieces = GetBombedPieces(gamePieces);
+                gamePieces = gamePieces.Union(bombedPieces).ToList();
+
                 ClearGamePieceAt(gamePieces);
                 BreakTileAt(gamePieces);
+
+                //add newly droped bombs to the game pieces array
+                if(m_clickedTileBomb != null)
+                {
+                    ActivateBomb(m_clickedTileBomb);
+                    m_clickedTileBomb = null;
+                }
+                if(m_targetTileBomb != null)
+                {
+                    ActivateBomb(m_targetTileBomb);
+                    m_targetTileBomb = null;
+                }
+
 
                 //delay
                 yield return new WaitForSeconds(0.25f);
@@ -799,31 +928,157 @@
             yield return null;  
         }
 
-
         //method to refill the board after a match
         IEnumerator RefillRoutine()
         {
-            //TODO: make them constant
-            FillBoard(10, 0.5f);
+            FillBoard(fillYOffset, fillMoveTime);
             //short delay
             yield return null;
         }
 
-        //method to check all moving pieces are collapsed
-        bool isCollapsed(List<GamePiece> gamePieces)
+        //method to get all game pieces int the specified row
+        List<GamePiece> GetRowPieces(int row)
         {
-            foreach (GamePiece piece in gamePieces)
+            List<GamePiece> gamePieces = new List<GamePiece>();
+
+            for(int i=0; i<width; i++)
             {
-                if (piece != null)
+                if(m_allGamePieces[i, row] != null)
                 {
-                    //check the game pieces's y locationa and internal location difference 
-                    //to see it is collapsed or not
-                    if (piece.transform.position.y - (float)piece.yIndex > 0.001f)
+                    gamePieces.Add(m_allGamePieces[i,row]);
+                }
+            }
+
+            return gamePieces;
+        }
+
+        //method to get all game pieces int the specified column
+        List<GamePiece> GetColumnPieces(int column)
+        {
+            List<GamePiece> gamePieces = new List<GamePiece>();
+
+            for(int i=0; i<height; i++)
+            {
+                if(m_allGamePieces[column,i] != null)
+                {
+                    gamePieces.Add(m_allGamePieces[column,i]);
+                }
+            }
+
+            return gamePieces;
+        }
+
+        //method to get all adjacent game pieces int the specified coordinates and offset  
+        List<GamePiece> GetAdjacentPieces(int x, int y, int offset=1)
+        {
+            List<GamePiece> gamePieces = new List<GamePiece>();
+
+            for(int i=x-offset; i<=x+offset; i++)
+            {
+                for(int j=y-offset; j<=y+offset; j++)
+                {
+                    if(IsWithinBounds(i,j))
                     {
-                        return false;
+                        gamePieces.Add(m_allGamePieces[i,j]);
                     }
                 }
             }
-            return true;
+
+            return gamePieces;
+        }
+
+        //method to get all need to be cleared game pieces while there is a bomb
+        List<GamePiece> GetBombedPieces(List<GamePiece> gamePieces)
+        {
+            List<GamePiece> allPiecesToClear = new List<GamePiece>();
+
+            foreach(GamePiece piece in gamePieces)
+            {
+                if(piece != null)
+                {
+                    List<GamePiece> piecesToClear = new List<GamePiece>(); //only for the bomb's needed to be cleared game pieces
+                    Bomb bomb = piece.GetComponent<Bomb>();
+
+                    //if the game pieces is a bomb, add its relevant needed to be cleared pieces to the list
+                    if(bomb != null)
+                    {
+                        switch (bomb.bombType)
+                        {
+                            case BombType.Row:
+                                piecesToClear = GetRowPieces(bomb.yIndex);
+                                break;
+
+                            case BombType.Column:
+                                piecesToClear = GetColumnPieces(bomb.xIndex);
+                                break;
+
+                            case BombType.Adjacent:
+                                piecesToClear = GetAdjacentPieces(bomb.xIndex, bomb.yIndex, 1);
+                                break;
+
+                            case BombType.Color:
+                                //TODO: add method
+                                break;
+                        }
+
+                        allPiecesToClear = allPiecesToClear.Union(piecesToClear).ToList(); //unite this bomb's needed to be cleared pieces to all
+                    }
+                }
+            }
+
+            return allPiecesToClear;
+        }
+
+        //method to drop a bomb on board after more than 4 game pieces matched
+        //according to match type droped bomb type will be set
+        GameObject DropBomb (int x, int y, Vector2 swapDirection, List<GamePiece> gamePieces)
+        {
+            GameObject bomb = null;
+
+            if (gamePieces.Count >= 4)
+            {
+                //if it is corner match, then adjacent bomb will be dropped
+                if (IsCornerMatch(gamePieces))
+                {
+                    if (adjacentBombPrefab !=null)
+                    {
+                        bomb = MakeBomb(adjacentBombPrefab, x, y);
+                    }
+                }
+                else
+                {   
+                    //if it is row match, then row bomb will be dropped
+                    if (swapDirection.x != 0)
+                    {
+                        if (rowBombPrefab !=null)
+                        {
+                            bomb = MakeBomb(rowBombPrefab, x, y);
+                        }
+
+                    }
+                    else
+                    {            
+                        //if it is column match, then column bomb will be dropped
+                        if (columnBombPrefab !=null)
+                        {
+                            bomb = MakeBomb(columnBombPrefab, x, y);
+                        }
+                    }
+                }
+            }
+            return bomb;
+        }
+
+        //method to activate bomb by adding it to game pieces array
+        void ActivateBomb(GameObject bomb)
+        {
+            int x = (int) bomb.transform.position.x;
+            int y = (int) bomb.transform.position.y;
+
+            if (IsWithinBounds(x,y))
+            {
+                m_allGamePieces[x,y] = bomb.GetComponent<GamePiece>();
+            }
         }
     }
+

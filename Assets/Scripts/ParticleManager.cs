@@ -15,8 +15,6 @@ public class ParticleManager : MonoBehaviour {
         GameObject clearFX = Instantiate(clearFXPrefab,new Vector3(x, y, z), Quaternion.identity) as GameObject;
         ParticlePlayer particlePlayer = clearFX.GetComponent<ParticlePlayer>();
 
-        Debug.LogWarning("ClearFX -> x:" + x + " y: " + y);
-
         //play the effect
         if (particlePlayer != null)
         {
