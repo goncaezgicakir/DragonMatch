@@ -2,6 +2,7 @@
     using System.Collections;
     using System.Collections.Generic;
     using System.Linq;
+using System.Text.RegularExpressions;
 
     public class Board : MonoBehaviour {
 
@@ -18,6 +19,7 @@
         public GameObject adjacentBombPrefab;
         public GameObject columnBombPrefab;
         public GameObject rowBombPrefab;
+        public GameObject colorBombPrefab;
 
         public StartingObject[] startingTiles;
         public StartingObject[] startingGamePieces;
@@ -333,9 +335,40 @@
                     //find matches at the new coordinates of the tiles
                     List<GamePiece> clickedPieceMatches = FindMatchesAt(clickedTile.xIndex, clickedTile.yIndex);
                     List<GamePiece> targetPieceMatches = FindMatchesAt(targetTile.xIndex, targetTile.yIndex);
+                    
+                    //color bomb match game pieces list
+                    List<GamePiece> colorMatches = new List<GamePiece>();
+
+                    //clicked game piece is color bomb
+                    //get all the same match value game pieces with the target game pieces match value
+                    if(IsColorBomb(clickedPiece) && !IsColorBomb(targetPiece)){
+
+                        clickedPiece.matchValue = targetPiece.matchValue;
+                        colorMatches = FindAllMatchValue(clickedPiece.matchValue);
+                    }
+                    //target game piece is color bomb
+                    //get all the same match value game pieces with the clicked game pieces match value
+                    else if (!IsColorBomb(clickedPiece) && IsColorBomb(targetPiece))
+                    {
+
+                        targetPiece.matchValue = clickedPiece.matchValue;
+                        colorMatches = FindAllMatchValue(targetPiece.matchValue);
+                    }
+                    //target and clicked game pieces are color bomb
+                    //get all the game pieces on the board
+                    else if (IsColorBomb(clickedPiece) && IsColorBomb(targetPiece))
+                    {
+                        foreach (GamePiece piece in m_allGamePieces)
+                        {
+                            if (!colorMatches.Contains(piece))
+                            {
+                                colorMatches.Add(piece);
+                            }
+                        }
+                    }
 
                     //if there is no match, move the pieces back to their old coordinates
-                    if (targetPieceMatches.Count == 0 & clickedPieceMatches.Count == 0)
+                    if (targetPieceMatches.Count == 0 && clickedPieceMatches.Count == 0 && colorMatches.Count == 0)
                     {
                         clickedPiece.Move(clickedTile.xIndex, clickedTile.yIndex, swapTime);
                         targetPiece.Move(targetTile.xIndex, targetTile.yIndex, swapTime);
@@ -356,18 +389,28 @@
                         if(m_clickedTileBomb != null && targetPiece != null)
                         {
                             GamePiece clickedBombPiece = m_clickedTileBomb.GetComponent<GamePiece>();
-                            clickedBombPiece.ChangeColor(targetPiece);
+                            
+                            //if the clicked bomb is not color bomb, then change its color
+                            if (!IsColorBomb(clickedBombPiece))
+                            {
+                                clickedBombPiece.ChangeColor(clickedPiece);
+                            }
                         }
 
                         //change the target bomb's color
                         if(m_targetTileBomb != null && clickedPiece != null)
                         {
                             GamePiece targetBombPiece = m_targetTileBomb.GetComponent<GamePiece>();
-                            targetBombPiece.ChangeColor(clickedPiece);
+                            
+                            //if the target bomb is not color bomb, then change its color
+                            if (!IsColorBomb(targetBombPiece))
+                            {
+                                targetBombPiece.ChangeColor(clickedPiece);
+                            }
                         }
 
                         //clear and refill the board after a match
-                        ClearAndRefillBoard(clickedPieceMatches.Union(targetPieceMatches).ToList());
+                        ClearAndRefillBoard(clickedPieceMatches.Union(targetPieceMatches).Union(colorMatches).ToList());
                     }
                 }
             }
@@ -684,7 +727,7 @@
         }
 
         //method to clear the game pieces at the given list
-        void ClearGamePieceAt(List<GamePiece> gamePieces)
+        void ClearGamePieceAt(List<GamePiece> gamePieces, List<GamePiece> bombedPieces)
         {
             foreach (GamePiece piece in gamePieces)
             {
@@ -695,7 +738,14 @@
                     //call the clear effect
                     if (m_particleManager != null)
                     {
-                        m_particleManager.ClearPieceFXAt(piece.xIndex, piece.yIndex);
+                        if (bombedPieces.Contains(piece))
+                        {
+                            m_particleManager.BombFXAt(piece.xIndex, piece.yIndex);
+                        }
+                        else
+                        {
+                            m_particleManager.ClearPieceFXAt(piece.xIndex, piece.yIndex);
+                        }
                     }
                 }
             }
@@ -879,8 +929,13 @@
                 //add the bombed game pieces to default ones clear them too
                 List<GamePiece> bombedPieces = GetBombedPieces(gamePieces);
                 gamePieces = gamePieces.Union(bombedPieces).ToList();
+                
+                //get the new bombed pieces after a bombed detected 
+                //this checks the chained bomb possibility
+                bombedPieces = GetBombedPieces(gamePieces);
+                gamePieces = gamePieces.Union(bombedPieces).ToList();
 
-                ClearGamePieceAt(gamePieces);
+                ClearGamePieceAt(gamePieces, bombedPieces);
                 BreakTileAt(gamePieces);
 
                 //add newly droped bombs to the game pieces array
@@ -1046,22 +1101,33 @@
                     }
                 }
                 else
-                {   
-                    //if it is row match, then row bomb will be dropped
-                    if (swapDirection.x != 0)
+                {
+                    //if there is more than 5 matches color bomb will be droped
+                    if (gamePieces.Count >= 5)
                     {
-                        if (rowBombPrefab !=null)
+                        if (colorBombPrefab != null)
                         {
-                            bomb = MakeBomb(rowBombPrefab, x, y);
+                            bomb = MakeBomb(colorBombPrefab, x, y);
                         }
-
                     }
                     else
-                    {            
-                        //if it is column match, then column bomb will be dropped
-                        if (columnBombPrefab !=null)
+                    {
+                        //if it is row match, then row bomb will be dropped
+                        if (swapDirection.x != 0)
                         {
-                            bomb = MakeBomb(columnBombPrefab, x, y);
+                            if (rowBombPrefab != null)
+                            {
+                                bomb = MakeBomb(rowBombPrefab, x, y);
+                            }
+
+                        }
+                        else
+                        {
+                            //if it is column match, then column bomb will be dropped
+                            if (columnBombPrefab != null)
+                            {
+                                bomb = MakeBomb(columnBombPrefab, x, y);
+                            }
                         }
                     }
                 }
@@ -1080,5 +1146,45 @@
                 m_allGamePieces[x,y] = bomb.GetComponent<GamePiece>();
             }
         }
-    }
+        
+        //method to find all game pieces on board within the given match value
+        List<GamePiece> FindAllMatchValue(MatchValue matchValue)
+        {
+
+            List<GamePiece> foundPieces = new List<GamePiece>();
+
+            //traversing the board
+            for (int i = 0; i < width; i++)
+            {
+                for (int j = 0; j < height; j++)
+                {
+                    if (m_allGamePieces[i, j] != null)
+                {   
+                        //game piece with a given match value is found
+                        if (m_allGamePieces[i, j].matchValue == matchValue)
+                        {
+                            foundPieces.Add(m_allGamePieces[i, j]);
+                        }
+                    }
+                }
+            }
+
+            return foundPieces;
+        }
+        
+        //method to check whether the game piece is a color bomb
+        bool IsColorBomb(GamePiece gamePiece)
+        {
+            Bomb bomb = gamePiece.GetComponent<Bomb>();
+            
+            //if the there is a bomb,check the whether it is color bomb or not
+            //return the result bool
+            if(bomb != null)
+            {
+                return (bomb.bombType == BombType.Color);
+            }
+
+            return false;
+        }
+}
 

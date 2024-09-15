@@ -2,6 +2,18 @@
 using UnityEngine;
 using System.Collections;
 
+public enum MatchValue
+{
+    BlueEgg,
+    GreenEgg,
+    IndigoEgg,
+    LilacEgg,
+    OrangeEgg,
+    PinkEgg,
+    PurpleEgg,
+    None
+}
+
 public class GamePiece : MonoBehaviour {
 
     //public variables
@@ -37,18 +49,6 @@ public class GamePiece : MonoBehaviour {
         Wild
 
     }*/
-
-     public enum MatchValue
-    {
-        BlueEgg,
-        GreenEgg,
-        IndigoEgg,
-        LilacEgg,
-        OrangeEgg,
-        PinkEgg,
-        PurpleEgg,
-        None
-    }
 
 	//main
 	void Start () {
@@ -169,25 +169,25 @@ public class GamePiece : MonoBehaviour {
                 switch(pieceToMatch.matchValue)
                 {
                     case MatchValue.BlueEgg:
-                        rendererToChange.color = new Color32(128, 229, 255, 255);
+                        rendererToChange.color = new Color(0f, 208f / 255f, 249f / 255f);
                         break;
                     case MatchValue.GreenEgg:
-                        rendererToChange.color = new Color(36, 143, 36);
+                        rendererToChange.color = new Color(0f, 249f / 255f, 12f / 255f);
                         break;
                     case MatchValue.IndigoEgg:
-                        rendererToChange.color = new Color(0, 0, 204, 255);
+                        rendererToChange.color = new Color(75f / 255f, 0f / 255f, 130f / 255f);
                         break;
                     case MatchValue.LilacEgg:
-                        rendererToChange.color = new Color(191, 128, 255, 255);
+                        rendererToChange.color = new Color(243f / 255f, 127f / 255f, 250f / 255f);
                         break;
                     case MatchValue.OrangeEgg:
-                        rendererToChange.color = new Color(255, 128, 0, 255);
+                        rendererToChange.color = new Color(255f / 255f, 128f / 255f, 0f / 255f);
                         break;
                     case MatchValue.PinkEgg:
-                        rendererToChange.color = new Color(204, 0, 102, 255);
+                        rendererToChange.color = new Color(204f / 255f, 0f / 255f, 102f / 255f);
                         break;
                     case MatchValue.PurpleEgg:
-                        rendererToChange.color = new Color(204, 51, 255, 255);
+                        rendererToChange.color = new Color(136f / 255f, 0f / 255f, 174f / 255f);
                         break;
                     default:
                         break;
