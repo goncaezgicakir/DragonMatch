@@ -1,265 +1,321 @@
-﻿    using UnityEngine;
-    using System.Collections;
-    using System.Collections.Generic;
-    using System.Linq;
-using System.Text.RegularExpressions;
+﻿using UnityEngine;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
 
-    public class Board : MonoBehaviour {
+public class Board : MonoBehaviour
+{
 
-        //public variables
-        public int width;
-        public int height;
-        public int borderSize;
-        public float swapTime = 0.5f;
-        public int fillYOffset = 10;
-        public float fillMoveTime = 0.5f;
-        public GameObject tileNormalPrefab;
-        public GameObject tileObstaclePrefab;
-        public GameObject[] gamePiecesPrefabs;
-        public GameObject adjacentBombPrefab;
-        public GameObject columnBombPrefab;
-        public GameObject rowBombPrefab;
-        public GameObject colorBombPrefab;
+    //public variables
+    public int width;
+    public int height;
+    public int borderSize;
 
-        public StartingObject[] startingTiles;
-        public StartingObject[] startingGamePieces;
+    public int maxCollectibles = 3;
+    public int collectibleCount = 0;
+    [Range(0, 1)]
+    public float chanceForCollectible = 0.1f;
 
-        //private variables
-        Tile[,] m_allTiles;
-        GamePiece[,] m_allGamePieces;
-        Tile m_clickedTile;
-        Tile m_targetTile;
-        GameObject m_clickedTileBomb;
-        GameObject m_targetTileBomb;
-        bool m_playerSwitchingEnabled = true;
-        ParticleManager m_particleManager;
+    public int fillYOffset = 10;
+    public float fillMoveTime = 0.5f;
+    public float swapTime = 0.5f;
 
-        //container for obstacle tile management
-        [System.Serializable]
-        public class StartingObject
+    public StartingObject[] startingTiles;
+    public StartingObject[] startingGamePieces;
+
+    public GameObject tileNormalPrefab;
+    public GameObject tileObstaclePrefab;
+    public GameObject[] gamePiecesPrefabs;
+
+    public GameObject adjacentBombPrefab;
+    public GameObject columnBombPrefab;
+    public GameObject rowBombPrefab;
+    public GameObject colorBombPrefab;
+
+    public GameObject[] collectiblePrefabs;
+
+
+
+    //private variables
+    Tile[,] m_allTiles;
+    GamePiece[,] m_allGamePieces;
+    Tile m_clickedTile;
+    Tile m_targetTile;
+    GameObject m_clickedTileBomb;
+    GameObject m_targetTileBomb;
+    bool m_playerSwitchingEnabled = true;
+    ParticleManager m_particleManager;
+
+    //container for obstacle tile management
+    [System.Serializable]
+    public class StartingObject
+    {
+        public GameObject prefab;
+        public int x;
+        public int y;
+        public int z;
+    }
+
+    //main
+    void Start()
+    {
+        //set all tiles
+        m_allTiles = new Tile[width, height];
+        //set all game pieces
+        m_allGamePieces = new GamePiece[width, height];
+        //set particle manager for effects
+        m_particleManager = GameObject.FindWithTag("ParticleManager").GetComponent<ParticleManager>();
+
+        //get the all bottom collectible game pieces count
+        List<GamePiece> collectibles = FindAllCollectibles();
+        collectibleCount = collectibles.Count;
+
+        SetupTiles();
+        SetupGamePieces();
+        SetupCamera();
+        //TODO: make constant
+        FillBoard(fillYOffset, fillMoveTime);
+    }
+
+    //method to set the camera on center to see board properly
+    void SetupCamera()
+    {
+
+        Camera.main.transform.position = new Vector3((float)(width - 1) / 2f, (float)(height - 1) / 2f, -10f);
+        float aspectRatio = (float)Screen.width / (float)Screen.height;
+        float verticalSize = (float)height / 2f + (float)borderSize;
+        float horizontalSize = ((float)width / 2f + (float)borderSize) / aspectRatio;
+
+        Camera.main.orthographicSize = (verticalSize > horizontalSize) ? verticalSize : horizontalSize;
+    }
+
+    //method to create obstacle and normal tiles randomly
+    void MakeTiles(GameObject prefab, int x, int y, int z = 0)
+    {
+        if (prefab != null && IsWithinBounds(x, y))
         {
-            public GameObject prefab;
-            public int x;
-            public int y;
-            public int z;
+            GameObject tile = Instantiate(prefab, new Vector3(x, y, z), Quaternion.identity) as GameObject;
+            tile.name = "Tile (" + x + "," + y + ")";
+            m_allTiles[x, y] = tile.GetComponent<Tile>();
+            tile.transform.parent = transform;
+            m_allTiles[x, y].Init(x, y, this);
         }
 
-        //main
-        void Start () 
+    }
+
+    //method to create game piece
+    void MakeGamePiece(GameObject prefab, int x, int y, int falseYOffset = 0, float moveTime = 0.1f)
+    {
+        if (prefab != null && IsWithinBounds(x, y))
         {
-            //set all tiles
-            m_allTiles = new Tile[width,height];
-            //set all game pieces
-            m_allGamePieces = new GamePiece[width, height];
-            //set particle manager for effects
-            m_particleManager = GameObject.FindWithTag("ParticleManager").GetComponent<ParticleManager>();
+            prefab.GetComponent<GamePiece>().Init(this);
+            PlaceGamePiece(prefab.GetComponent<GamePiece>(), x, y);
 
-            SetupTiles();
-            SetupGamePieces();
-            SetupCamera();  
-            //TODO: make constant
-            FillBoard(fillYOffset, fillMoveTime);
+            if (falseYOffset != 0)
+            {
+                prefab.transform.position = new Vector3(x, y + falseYOffset, 0);
+                prefab.GetComponent<GamePiece>().Move(x, y, moveTime);
+            }
+
+            prefab.transform.parent = transform;
         }
 
-        //method to set the camera on center to see board properly
-        void SetupCamera(){
+    }
 
-            Camera.main.transform.position = new Vector3( (float)(width - 1) / 2f, (float)(height - 1) /2f, -10f);
-            float aspectRatio = (float)Screen.width / (float)Screen.height;
-            float verticalSize = (float)height / 2f + (float)borderSize;
-            float horizontalSize = ( (float)width / 2f + (float)borderSize ) / aspectRatio;
-
-            Camera.main.orthographicSize = (verticalSize > horizontalSize) ? verticalSize : horizontalSize;
+    //method to create bomb
+    GameObject MakeBomb(GameObject prefab, int x, int y)
+    {
+        if (prefab != null && IsWithinBounds(x, y))
+        {
+            GameObject bomb = Instantiate(prefab, new Vector3(x, y, 0), Quaternion.identity) as GameObject;
+            bomb.GetComponent<Bomb>().Init(this);
+            bomb.GetComponent<Bomb>().SetCoord(x, y);
+            bomb.transform.parent = transform;
+            return bomb;
         }
 
-        //method to create obstacle and normal tiles randomly
-        void MakeTiles(GameObject prefab, int x, int y, int z=0)
-        {   
-            if(prefab != null && IsWithinBounds(x, y))
-            {       
-                GameObject tile = Instantiate(prefab, new Vector3(x, y, z), Quaternion.identity) as GameObject;
-                tile.name = "Tile (" + x + "," + y + ")";
-                m_allTiles[x, y] = tile.GetComponent<Tile>();
-                tile.transform.parent = transform;
-                m_allTiles[x, y].Init(x, y, this);
+        return null;
+    }
+
+    //method to set tile coordinates
+    void SetupTiles()
+    {
+        //set obstacle tiles
+        foreach (StartingObject sTile in startingTiles)
+        {
+            if (sTile != null)
+            {
+                MakeTiles(sTile.prefab, sTile.x, sTile.y, sTile.z);
             }
 
         }
 
-        //method to create game piece
-        void MakeGamePiece(GameObject prefab, int x, int y, int falseYOffset = 0, float moveTime = 0.1f)
+        //set other tiles 
+        for (int i = 0; i < width; i++)
         {
-            if (prefab != null && IsWithinBounds(x, y))
+            for (int j = 0; j < height; j++)
             {
-                prefab.GetComponent<GamePiece>().Init(this);
-                PlaceGamePiece(prefab.GetComponent<GamePiece>(), x, y);
 
-                if (falseYOffset != 0)
+                if (m_allTiles[i, j] == null)
                 {
-                    prefab.transform.position = new Vector3(x, y + falseYOffset, 0);
-                    prefab.GetComponent<GamePiece>().Move(x, y, moveTime);
+                    MakeTiles(tileNormalPrefab, i, j);
                 }
 
-                prefab.transform.parent = transform;
             }
-
         }
+    }
 
-        //method to create bomb
-        GameObject MakeBomb(GameObject prefab, int x, int y)
+    //method to set defaultly wanted starting game pieces   
+    void SetupGamePieces()
+    {
+        foreach (StartingObject sPiece in startingGamePieces)
         {
-            if(prefab != null && IsWithinBounds(x,y))
+            if (sPiece != null)
             {
-                GameObject bomb = Instantiate(prefab, new Vector3(x, y, 0), Quaternion.identity) as GameObject;
-                bomb.GetComponent<Bomb>().Init(this);
-                bomb.GetComponent<Bomb>().SetCoord(x,y);
-                bomb.transform.parent = transform;
-                return bomb;
-            }     
-
-            return null;       
+                GameObject piece = Instantiate(sPiece.prefab, new Vector3(sPiece.x, sPiece.y, 0), Quaternion.identity) as GameObject;
+                MakeGamePiece(piece, sPiece.x, sPiece.y, fillYOffset, fillMoveTime);
+            }
         }
+    }
+
+    //method to return a random object from
+    GameObject GetRandomObject(GameObject[] objectArray)
+    {
+        int randomIdx = Random.Range(0, objectArray.Length);
         
-        //method to set tile coordinates
-        void SetupTiles()
+        if (objectArray[randomIdx] == null)
         {
-            //set obstacle tiles
-            foreach(StartingObject sTile in startingTiles)
+            Debug.LogWarning("Board.GetRandomObject at index " + randomIdx + " does not contain a valid GameObject!");
+        }
+
+        return objectArray[randomIdx];
+    }
+
+    //method to get a random GamePiece 
+    GameObject GetRandomGamePiece()
+    {
+        return GetRandomObject(gamePiecesPrefabs);
+    }
+
+    //method to get a random collectible game piece 
+    GameObject GetRandomCollectible()
+    {
+        return GetRandomObject(collectiblePrefabs);
+    }
+
+    //method to place the GamePiece object to specified (x,y) coordinate
+    public void PlaceGamePiece(GamePiece gamePiece, int x, int y)
+    {
+
+        if (gamePiece == null)
+        {
+
+            Debug.LogWarning("Invalig GamePiece!");
+            return;
+        }
+
+        //set the position and rotation of the gamePiece
+        gamePiece.transform.position = new Vector3(x, y, 0);
+        gamePiece.transform.rotation = Quaternion.identity;
+
+        //update the current gamePiece on the tile
+        if (IsWithinBounds(x, y))
+        {
+            m_allGamePieces[x, y] = gamePiece;
+        }
+
+        //set gamePiece's new coord values
+        gamePiece.SetCoord(x, y);
+
+    }
+
+    //method to check gamePieces still in range
+    bool IsWithinBounds(int x, int y)
+    {
+        return (x >= 0 && x < width && y >= 0 && y < height);
+    }
+
+    //method to create a random game piece at the given coordinate
+    GamePiece FillRandomGamePieceAt(int x, int y, int falseYOffset = 0, float moveTime = 0.1f)
+    {
+        if (IsWithinBounds(x, y))
+        {
+            //creates a ranom game piece
+            GameObject randomPiece = Instantiate(GetRandomGamePiece(), Vector3.zero, Quaternion.identity) as GameObject;
+            MakeGamePiece(randomPiece, x, y, falseYOffset, moveTime);
+            return randomPiece.GetComponent<GamePiece>();
+        }
+        return null;
+    }
+
+    //method to create a random collectible game piece at the given coordinate
+    GamePiece FillRandomCollectibleAt(int x, int y, int falseYOffset = 0, float moveTime = 0.1f)
+    {
+        if (IsWithinBounds(x, y))
+        {
+            //creates a ranom game piece
+            GameObject randomPiece = Instantiate(GetRandomCollectible(), Vector3.zero, Quaternion.identity) as GameObject;
+            MakeGamePiece(randomPiece, x, y, falseYOffset, moveTime);
+            return randomPiece.GetComponent<GamePiece>();
+        }
+        return null;
+    }
+
+    //method to determine is there a free matched game pieces while filling the board randomly
+    bool HasMatchOnFill(int x, int y, int minLength = 3)
+    {
+        //only check downwards and left since we are filling the board at that direction
+        List<GamePiece> leftMatches = FindMatches(x, y, new Vector2(-1, 0), minLength);
+        List<GamePiece> downwardsMatches = FindMatches(x, y, new Vector2(0, -1), minLength);
+
+        if (leftMatches == null)
+        {
+            leftMatches = new List<GamePiece>();
+        }
+
+        if (downwardsMatches == null)
+        {
+            downwardsMatches = new List<GamePiece>();
+        }
+
+        return (leftMatches.Count > 0 || downwardsMatches.Count > 0);
+    }
+
+    //methof to fill the board with random GamePiece objects
+    void FillBoard(int falseYOffset = 0, float moveTime = 0.1f)
+    {
+        //TODO: make it constant 
+        int maxIteration = 100;
+        int iteration = 0;
+
+        for (int i = 0; i < width; i++)
+        {
+            for (int j = 0; j < height; j++)
             {
-                if(sTile != null)
+
+                if (m_allGamePieces[i, j] == null && m_allTiles[i, j].tileType != TileType.Obstacle)
                 {
-                    MakeTiles(sTile.prefab, sTile.x, sTile.y, sTile.z);
-                }
+                    //create a random game piece
+                    GamePiece piece = null;
 
-            }
-
-            //set other tiles 
-            for (int i = 0; i < width; i++)
-            {
-                for (int j = 0; j < height; j++)
-                {
-
-                    if(m_allTiles[i,j] == null)
+                    //if we are at the top of the board
+                    //drop a collectible game object
+                    if (j == height - 1 && CanAddCollectible())
                     {
-                        MakeTiles(tileNormalPrefab, i, j);
+                        piece = FillRandomCollectibleAt(i, j, falseYOffset, moveTime);
+                        collectibleCount++;
                     }
-                   
-                }
-            }
-        }
-
-        //method to set defaultly wanted starting game pieces   
-        void SetupGamePieces()
-        {
-            foreach (StartingObject sPiece in startingGamePieces)
-            {
-                if(sPiece != null)
-                {
-                    GameObject piece = Instantiate(sPiece.prefab, new Vector3(sPiece.x, sPiece.y, 0), Quaternion.identity) as GameObject;
-                    MakeGamePiece(piece, sPiece.x, sPiece.y, fillYOffset, fillMoveTime);
-                }
-            }
-        }                                    
-        
-        //method to get a random GamePiece 
-        GameObject GetRandomGamePiece(){
-
-            int randomIdx = Random.Range(0, gamePiecesPrefabs.Length);
-
-            if(gamePiecesPrefabs[randomIdx] == null){
-            
-                Debug.LogWarning("BOARD:" + randomIdx + "does not contain a valid GamePiece prefab!");
-            }
-
-            return gamePiecesPrefabs[randomIdx];
-        }
-            
-        //method to place the GamePiece object to specified (x,y) coordinate
-        public void PlaceGamePiece(GamePiece gamePiece, int x, int y){
-
-            if(gamePiece == null){
-
-                Debug.LogWarning("Invalig GamePiece!");
-                return;
-            }
-
-            //set the position and rotation of the gamePiece
-            gamePiece.transform.position = new Vector3(x, y, 0);
-            gamePiece.transform.rotation = Quaternion.identity;
-
-            //update the current gamePiece on the tile
-            if(IsWithinBounds(x,y))
-            {
-                m_allGamePieces[x, y] = gamePiece;
-            }
-
-            //set gamePiece's new coord values
-            gamePiece.SetCoord(x, y);
-
-        }
-            
-        //method to check gamePieces still in range
-        bool IsWithinBounds(int x, int y)
-        {
-            return (x >= 0 && x < width && y >= 0 && y < height); 
-        }
-
-        //method to create a random game piece at the given coordinate
-        GamePiece FillRandomAt(int x, int y, int falseYOffset = 0, float moveTime = 0.1f)
-        {   
-            if(IsWithinBounds(x,y))
-            {
-                //creates a ranom game piece
-                GameObject randomPiece = Instantiate(GetRandomGamePiece(), Vector3.zero, Quaternion.identity) as GameObject;
-                MakeGamePiece(randomPiece, x, y, falseYOffset, moveTime);
-                return randomPiece.GetComponent<GamePiece>();
-            }
-            return null;
-        }
-            
-        //method to determine is there a free matched game pieces while filling the board randomly
-        bool HasMatchOnFill(int x, int y, int minLength = 3)
-        {
-            //only check downwards and left since we are filling the board at that direction
-            List<GamePiece> leftMatches = FindMatches(x, y, new Vector2(-1,0), minLength);
-            List<GamePiece> downwardsMatches = FindMatches(x, y, new Vector2(0, -1), minLength);
-
-            if (leftMatches == null)
-            {
-                leftMatches = new List<GamePiece>();
-            }
-
-            if (downwardsMatches == null)
-            {
-                downwardsMatches = new List<GamePiece>();
-            }
-
-            return(leftMatches.Count > 0 || downwardsMatches.Count > 0);
-        }
-
-        //methof to fill the board with random GamePiece objects
-        void FillBoard(int falseYOffset = 0, float moveTime = 0.1f)
-        {   
-            //TODO: make it constant 
-            int maxIteration = 100;
-            int iteration = 0;
-
-            for (int i = 0; i < width; i++)
-            {
-                for (int j = 0; j < height; j++)
-                {
-
-                    if (m_allGamePieces[i, j] == null && m_allTiles[i,j].tileType != TileType.Obstacle)
+                    //else drop a game piece
+                    else
                     {
-                        //create a random game piece
-                        GamePiece piece = FillRandomAt(i, j, falseYOffset, moveTime);
+                        piece = FillRandomGamePieceAt(i, j, falseYOffset, moveTime);
                         iteration = 0;
                         //if there is a match while filling randomly
                         //clear the game piece and create another game piece
                         while (HasMatchOnFill(i, j))
                         {
                             ClearGamePieceAt(i, j);
-                            piece = FillRandomAt(i, j, falseYOffset, moveTime);
+                            piece = FillRandomGamePieceAt(i, j, falseYOffset, moveTime);
                             iteration++;
 
                             if (iteration >= maxIteration)
@@ -267,924 +323,1016 @@ using System.Text.RegularExpressions;
                                 Debug.Log("break while loop - filling randomly--------------------------------");
                                 break;
                             }
-                        }           
+                        }
                     }
-                            
                 }
             }
         }
+    }
 
-        //method to handle mouse click
-        public void ClickTile(Tile tile)
+    //method to handle mouse click
+    public void ClickTile(Tile tile)
+    {
+        if (m_clickedTile == null)
         {
-            if (m_clickedTile == null )
-            {
-                m_clickedTile = tile;
-                //Debug.Log("Clicked tile: " + tile.name);
-            }
+            m_clickedTile = tile;
+            //Debug.Log("Clicked tile: " + tile.name);
+        }
+    }
+
+    //method to handle mouse drag
+    public void DragToTile(Tile tile)
+    {
+        if (m_clickedTile != null && IsNextTo(tile, m_clickedTile))
+        {
+            m_targetTile = tile;
+        }
+    }
+
+    //method to handle mouse releaase
+    public void ReleaseTile()
+    {
+        if (m_clickedTile != null && m_targetTile != null)
+        {
+            SwitchTiles(m_clickedTile, m_targetTile);
         }
 
-        //method to handle mouse drag
-        public void DragToTile(Tile tile)
+        //reset the tile values at the end of switching
+        m_clickedTile = null;
+        m_targetTile = null;
+    }
+
+    //method to switching game piece to get a match
+    void SwitchTiles(Tile clickedTile, Tile targetTile)
+    {
+        StartCoroutine(SwitchTilesRoutine(clickedTile, targetTile));
+    }
+
+    //method to switching game pieces and highlighting if it is a match
+    IEnumerator SwitchTilesRoutine(Tile clickedTile, Tile targetTile)
+    {
+
+        if (m_playerSwitchingEnabled)
         {
-            if (m_clickedTile != null && IsNextTo(tile, m_clickedTile))
+            //get pieces
+            GamePiece clickedPiece = m_allGamePieces[m_clickedTile.xIndex, m_clickedTile.yIndex];
+            GamePiece targetPiece = m_allGamePieces[m_targetTile.xIndex, m_targetTile.yIndex];
+
+            if (targetPiece != null && clickedPiece != null)
             {
-                m_targetTile = tile;
-            }
-        }
+                //move pieces
+                clickedPiece.Move(targetTile.xIndex, targetTile.yIndex, swapTime);
+                targetPiece.Move(clickedTile.xIndex, clickedTile.yIndex, swapTime);
 
-        //method to handle mouse releaase
-        public  void ReleaseTile()
-        {
-            if (m_clickedTile != null && m_targetTile != null)
-            {
-                SwitchTiles(m_clickedTile, m_targetTile);
-            }
+                //waits for swap time befor highlighting matches
+                //delay
+                yield return new WaitForSeconds(swapTime);
 
-            //reset the tile values at the end of switching
-            m_clickedTile = null;
-            m_targetTile = null;
-        }
+                //find matches at the new coordinates of the tiles
+                List<GamePiece> clickedPieceMatches = FindMatchesAt(clickedTile.xIndex, clickedTile.yIndex);
+                List<GamePiece> targetPieceMatches = FindMatchesAt(targetTile.xIndex, targetTile.yIndex);
 
-        //method to switching game piece to get a match
-        void SwitchTiles(Tile clickedTile, Tile targetTile)
-        {
-            StartCoroutine(SwitchTilesRoutine(clickedTile, targetTile));
-        }
+                //color bomb match game pieces list
+                List<GamePiece> colorMatches = new List<GamePiece>();
 
-        //method to switching game pieces and highlighting if it is a match
-        IEnumerator SwitchTilesRoutine(Tile clickedTile, Tile targetTile)
-        {   
-
-            if (m_playerSwitchingEnabled)
-            {
-                //get pieces
-                GamePiece clickedPiece = m_allGamePieces[m_clickedTile.xIndex, m_clickedTile.yIndex];
-                GamePiece targetPiece = m_allGamePieces[m_targetTile.xIndex, m_targetTile.yIndex];            
-
-                if (targetPiece != null && clickedPiece != null)
+                //clicked game piece is color bomb
+                //get all the same match value game pieces with the target game pieces match value
+                if (IsColorBomb(clickedPiece) && !IsColorBomb(targetPiece))
                 {
-                    //move pieces
-                    clickedPiece.Move(targetTile.xIndex, targetTile.yIndex, swapTime);
-                    targetPiece.Move(clickedTile.xIndex, clickedTile.yIndex, swapTime);
-                        
+
+                    clickedPiece.matchValue = targetPiece.matchValue;
+                    colorMatches = FindAllMatchValue(clickedPiece.matchValue);
+                }
+                //target game piece is color bomb
+                //get all the same match value game pieces with the clicked game pieces match value
+                else if (!IsColorBomb(clickedPiece) && IsColorBomb(targetPiece))
+                {
+
+                    targetPiece.matchValue = clickedPiece.matchValue;
+                    colorMatches = FindAllMatchValue(targetPiece.matchValue);
+                }
+                //target and clicked game pieces are color bomb
+                //get all the game pieces on the board
+                else if (IsColorBomb(clickedPiece) && IsColorBomb(targetPiece))
+                {
+                    foreach (GamePiece piece in m_allGamePieces)
+                    {
+                        if (!colorMatches.Contains(piece))
+                        {
+                            colorMatches.Add(piece);
+                        }
+                    }
+                }
+
+                //if there is no match, move the pieces back to their old coordinates
+                if (targetPieceMatches.Count == 0 && clickedPieceMatches.Count == 0 && colorMatches.Count == 0)
+                {
+                    clickedPiece.Move(clickedTile.xIndex, clickedTile.yIndex, swapTime);
+                    targetPiece.Move(targetTile.xIndex, targetTile.yIndex, swapTime);
+                }
+                //if there is a match, clear those game pieces from board
+                else
+                {
                     //waits for swap time befor highlighting matches
                     //delay
                     yield return new WaitForSeconds(swapTime);
 
-                    //find matches at the new coordinates of the tiles
-                    List<GamePiece> clickedPieceMatches = FindMatchesAt(clickedTile.xIndex, clickedTile.yIndex);
-                    List<GamePiece> targetPieceMatches = FindMatchesAt(targetTile.xIndex, targetTile.yIndex);
-                    
-                    //color bomb match game pieces list
-                    List<GamePiece> colorMatches = new List<GamePiece>();
+                    //drop a new bomb if there is more than 4 game pieces are matched
+                    Vector2 swapDirection = new Vector2(targetTile.xIndex - clickedTile.xIndex, targetTile.yIndex - clickedTile.yIndex);
+                    m_clickedTileBomb = DropBomb(clickedTile.xIndex, clickedTile.yIndex, swapDirection, clickedPieceMatches);
+                    m_targetTileBomb = DropBomb(targetTile.xIndex, targetTile.yIndex, swapDirection, targetPieceMatches);
 
-                    //clicked game piece is color bomb
-                    //get all the same match value game pieces with the target game pieces match value
-                    if(IsColorBomb(clickedPiece) && !IsColorBomb(targetPiece)){
-
-                        clickedPiece.matchValue = targetPiece.matchValue;
-                        colorMatches = FindAllMatchValue(clickedPiece.matchValue);
-                    }
-                    //target game piece is color bomb
-                    //get all the same match value game pieces with the clicked game pieces match value
-                    else if (!IsColorBomb(clickedPiece) && IsColorBomb(targetPiece))
+                    //change the clicked bomb's color
+                    if (m_clickedTileBomb != null && targetPiece != null)
                     {
+                        GamePiece clickedBombPiece = m_clickedTileBomb.GetComponent<GamePiece>();
 
-                        targetPiece.matchValue = clickedPiece.matchValue;
-                        colorMatches = FindAllMatchValue(targetPiece.matchValue);
-                    }
-                    //target and clicked game pieces are color bomb
-                    //get all the game pieces on the board
-                    else if (IsColorBomb(clickedPiece) && IsColorBomb(targetPiece))
-                    {
-                        foreach (GamePiece piece in m_allGamePieces)
+                        //if the clicked bomb is not color bomb, then change its color
+                        if (!IsColorBomb(clickedBombPiece))
                         {
-                            if (!colorMatches.Contains(piece))
-                            {
-                                colorMatches.Add(piece);
-                            }
+                            clickedBombPiece.ChangeColor(clickedPiece);
                         }
                     }
 
-                    //if there is no match, move the pieces back to their old coordinates
-                    if (targetPieceMatches.Count == 0 && clickedPieceMatches.Count == 0 && colorMatches.Count == 0)
+                    //change the target bomb's color
+                    if (m_targetTileBomb != null && clickedPiece != null)
                     {
-                        clickedPiece.Move(clickedTile.xIndex, clickedTile.yIndex, swapTime);
-                        targetPiece.Move(targetTile.xIndex, targetTile.yIndex, swapTime);
-                    }
-                    //if there is a match, clear those game pieces from board
-                    else
-                    {
-                        //waits for swap time befor highlighting matches
-                        //delay
-                        yield return new WaitForSeconds(swapTime);
+                        GamePiece targetBombPiece = m_targetTileBomb.GetComponent<GamePiece>();
 
-                        //drop a new bomb if there is more than 4 game pieces are matched
-                        Vector2 swapDirection = new Vector2(targetTile.xIndex - clickedTile.xIndex,targetTile.yIndex - clickedTile.yIndex);
-                        m_clickedTileBomb = DropBomb(clickedTile.xIndex, clickedTile.yIndex, swapDirection, clickedPieceMatches);
-                        m_targetTileBomb = DropBomb(targetTile.xIndex, targetTile.yIndex, swapDirection, targetPieceMatches);
-
-                        //change the clicked bomb's color
-                        if(m_clickedTileBomb != null && targetPiece != null)
+                        //if the target bomb is not color bomb, then change its color
+                        if (!IsColorBomb(targetBombPiece))
                         {
-                            GamePiece clickedBombPiece = m_clickedTileBomb.GetComponent<GamePiece>();
-                            
-                            //if the clicked bomb is not color bomb, then change its color
-                            if (!IsColorBomb(clickedBombPiece))
-                            {
-                                clickedBombPiece.ChangeColor(clickedPiece);
-                            }
+                            targetBombPiece.ChangeColor(clickedPiece);
                         }
-
-                        //change the target bomb's color
-                        if(m_targetTileBomb != null && clickedPiece != null)
-                        {
-                            GamePiece targetBombPiece = m_targetTileBomb.GetComponent<GamePiece>();
-                            
-                            //if the target bomb is not color bomb, then change its color
-                            if (!IsColorBomb(targetBombPiece))
-                            {
-                                targetBombPiece.ChangeColor(clickedPiece);
-                            }
-                        }
-
-                        //clear and refill the board after a match
-                        ClearAndRefillBoard(clickedPieceMatches.Union(targetPieceMatches).Union(colorMatches).ToList());
                     }
+
+                    //clear and refill the board after a match
+                    ClearAndRefillBoard(clickedPieceMatches.Union(targetPieceMatches).Union(colorMatches).ToList());
                 }
             }
         }
+    }
 
-        //method to determine if the two tile is next to each other
-        bool IsNextTo(Tile start, Tile end)
+    //method to determine if the two tile is next to each other
+    bool IsNextTo(Tile start, Tile end)
+    {
+        if (Mathf.Abs(start.xIndex - end.xIndex) == 1 && start.yIndex == end.yIndex)
         {
-            if (Mathf.Abs(start.xIndex - end.xIndex) == 1 && start.yIndex == end.yIndex)
-            {
-                return true;
-            }
-
-            if (Mathf.Abs(start.yIndex - end.yIndex) == 1 && start.xIndex == end.xIndex)
-            {
-                return true;
-            }
-
-            return false;
+            return true;
         }
 
-        //method to find matched game pieces
-        List<GamePiece> FindMatches(int startX, int startY, Vector2 searchDirection, int minLength = 3)
+        if (Mathf.Abs(start.yIndex - end.yIndex) == 1 && start.xIndex == end.xIndex)
         {
-            List<GamePiece> matches = new List<GamePiece>();
-            GamePiece startPiece = null;
+            return true;
+        }
 
-            if(IsWithinBounds(startX, startY))
+        return false;
+    }
+
+    //method to find matched game pieces
+    List<GamePiece> FindMatches(int startX, int startY, Vector2 searchDirection, int minLength = 3)
+    {
+        List<GamePiece> matches = new List<GamePiece>();
+        GamePiece startPiece = null;
+
+        if (IsWithinBounds(startX, startY))
+        {
+            startPiece = m_allGamePieces[startX, startY];
+        }
+
+        //add the first piece to matches list
+        if (startPiece != null)
+        {
+            matches.Add(startPiece);
+        }
+        else
+        {
+            return null;
+        }
+
+        int nextX;
+        int nextY;
+
+        //max value of the board length
+        int maxValue = (width > height) ? width : height;
+
+        for (int i = 1; i < maxValue - 1; i++)
+        {
+            //get the next piece coordinates
+            nextX = startX + (int)Mathf.Clamp(searchDirection.x, -1, 1) * i;
+            nextY = startY + (int)Mathf.Clamp(searchDirection.y, -1, 1) * i;
+
+            if (!IsWithinBounds(nextX, nextY))
             {
-                startPiece = m_allGamePieces[startX, startY];
+                break;
             }
 
-            //add the first piece to matches list
-            if (startPiece != null)
+            //get the next piece
+            GamePiece nextPiece = m_allGamePieces[nextX, nextY];
+
+            if (nextPiece == null)
             {
-                matches.Add(startPiece);
+                break;
             }
             else
             {
-                return null;
-            }
-
-            int nextX;
-            int nextY;
-
-            //max value of the board length
-            int maxValue = (width > height) ? width : height;
-
-            for (int i = 1; i < maxValue - 1; i++)
-            {
-                //get the next piece coordinates
-                nextX = startX + (int)Mathf.Clamp(searchDirection.x, -1, 1) * i;
-                nextY = startY + (int)Mathf.Clamp(searchDirection.y, -1, 1) * i;
-
-                if (!IsWithinBounds(nextX, nextY))
+                //add this piece to matches if it is identical with the previous one and not already added to matches list 
+                //also if the match value shouldnt be none in order to game pieces to be matched
+                if (nextPiece.matchValue == startPiece.matchValue && !matches.Contains(nextPiece) && nextPiece.matchValue != MatchValue.None)
                 {
-                    break;
-                }
-
-                //get the next piece
-                GamePiece nextPiece = m_allGamePieces[nextX, nextY];
-
-                if (nextPiece == null)
-                {
-                    break;
+                    matches.Add(nextPiece);
                 }
                 else
                 {
-                    //add this piece to matches if it is identical with the previous one and not already added to matches list 
-                    if (nextPiece.matchValue == startPiece.matchValue && !matches.Contains(nextPiece))
+                    break;
+                }
+            }
+        }
+
+        //return the macthes list
+        if (matches.Count >= minLength)
+        {
+            return matches;
+        }
+
+        //no matched pieces, return null
+        return null;
+    }
+
+    //method to find vertically matched game pieces
+    List<GamePiece> FindVerticalMatches(int startX, int startY, int minLength = 3)
+    {
+        //find upward matches by moving +1 on y axis
+        List<GamePiece> upwardMatches = FindMatches(startX, startY, new Vector2(0, 1), 2);
+        //find downward matches by moving -1 on y axis
+        List<GamePiece> downwardMatches = FindMatches(startX, startY, new Vector2(0, -1), 2);
+
+        if (upwardMatches == null)
+        {
+            upwardMatches = new List<GamePiece>();
+        }
+
+        if (downwardMatches == null)
+        {
+            downwardMatches = new List<GamePiece>();
+        }
+
+        /*
+        //combine matches lists
+        foreach (GamePiece piece in downwardMatches)
+        {
+            if (!upwardMatches.Contains(piece))
+            {
+                upwardMatches.Add(piece);
+            }
+        }
+
+        //if there is enough matches return the matches list, else null
+        return (upwardMatches.Count >= minLength) ? upwardMatches : null;
+        */
+
+        //combine matches lists
+        var combinedMatches = upwardMatches.Union(downwardMatches).ToList();
+        //if there is enough matches return the matches list, else null
+
+        return (combinedMatches.Count >= minLength) ? combinedMatches : null;
+    }
+
+    //method to find horizontally matched game pieces
+    List<GamePiece> FindHorizontalMatches(int startX, int startY, int minLength = 3)
+    {
+        //find left matches by moving -1 on x axis
+        List<GamePiece> leftMatches = FindMatches(startX, startY, new Vector2(-1, 0), 2);
+        //find right matches by moving +11 on x axis
+        List<GamePiece> rightMatches = FindMatches(startX, startY, new Vector2(1, 0), 2);
+
+        if (leftMatches == null)
+        {
+            leftMatches = new List<GamePiece>();
+        }
+
+        if (rightMatches == null)
+        {
+            rightMatches = new List<GamePiece>();
+        }
+
+        //combine matches lists
+        var combinedMatches = rightMatches.Union(leftMatches).ToList();
+        //if there is enough matches return the matches list, else null
+
+        return (combinedMatches.Count >= minLength) ? combinedMatches : null;
+    }
+
+    //method to find matches with its coordinate values and returning as a combined matches list 
+    List<GamePiece> FindMatchesAt(int x, int y, int minLength = 3)
+    {
+        List<GamePiece> horizMatches = FindHorizontalMatches(x, y, minLength);
+        List<GamePiece> vertMatches = FindVerticalMatches(x, y, minLength);
+
+        if (horizMatches == null)
+        {
+            horizMatches = new List<GamePiece>();
+        }
+
+        if (vertMatches == null)
+        {
+            vertMatches = new List<GamePiece>();
+        }
+        var combinedMatches = horizMatches.Union(vertMatches).ToList();
+        return combinedMatches;
+    }
+
+    //method to find all matches in the given list and returning as a combined matches list 
+    List<GamePiece> FindMatchesAt(List<GamePiece> gamePieces, int minLength = 3)
+    {
+        List<GamePiece> matches = new List<GamePiece>();
+
+        foreach (GamePiece piece in gamePieces)
+        {
+            matches = matches.Union(FindMatchesAt(piece.xIndex, piece.yIndex, minLength)).ToList();
+        }
+
+        return matches;
+    }
+
+    //method to find all matches in the board
+    List<GamePiece> FindAllMatches()
+    {
+        List<GamePiece> combinedMatches = new List<GamePiece>();
+
+        for (int i = 0; i < width; i++)
+        {
+            for (int j = 0; j < height; j++)
+            {
+                //find the match at the current coordinate
+                List<GamePiece> matches = FindMatchesAt(i, j);
+                //add the match to combined match list
+                combinedMatches = combinedMatches.Union(matches).ToList();
+            }
+        }
+
+        return combinedMatches;
+    }
+
+    //method to find matches are corner in order to drop a bomb
+    bool IsCornerMatch(List<GamePiece> gamePieces)
+    {
+        bool vertical = false;
+        bool horizontal = false;
+        int xStart = -1;
+        int yStart = -1;
+
+        foreach (GamePiece piece in gamePieces)
+        {
+            if (piece != null)
+            {
+                if (xStart == -1 || yStart == -1)
+                {
+                    xStart = piece.xIndex;
+                    yStart = piece.yIndex;
+                    continue;
+                }
+
+                if (piece.xIndex != xStart && piece.yIndex == yStart)
+                {
+                    horizontal = true;
+                }
+
+                if (piece.xIndex == xStart && piece.yIndex != yStart)
+                {
+                    vertical = true;
+                }
+            }
+        }
+
+        return (horizontal && vertical);
+
+    }
+
+    //method to remove highlight on the given coordinated tile
+    void HighlightTileOff(int x, int y)
+    {
+        if (m_allTiles[x, y].tileType != TileType.Breakable)
+        {
+            SpriteRenderer spriteRenderer = m_allTiles[x, y].GetComponent<SpriteRenderer>();
+            spriteRenderer.color = new Color(spriteRenderer.color.r, spriteRenderer.color.g, spriteRenderer.color.b, 0);
+        }
+    }
+
+    //method to highlight on the given coordinated tile
+    void HighlightTileOn(int x, int y, Color col)
+    {
+        if (m_allTiles[x, y].tileType != TileType.Breakable)
+        {
+            SpriteRenderer spriteRenderer = m_allTiles[x, y].GetComponent<SpriteRenderer>();
+            spriteRenderer.color = col;
+        }
+    }
+
+    //method to find matched tiles and highlight them
+    void HighlightMatchesAt(int x, int y)
+    {
+        HighlightTileOff(x, y);
+
+        var combinedMatches = FindMatchesAt(x, y);
+
+        if (combinedMatches.Count > 0)
+        {
+            foreach (GamePiece piece in combinedMatches)
+            {
+                HighlightTileOn(piece.xIndex, piece.yIndex, piece.GetComponent<SpriteRenderer>().color);
+            }
+        }
+    }
+
+    //method to higlight all matched tiles at the hole board
+    void HighlightMatches()
+    {
+        for (int i = 0; i < width; i++)
+        {
+            for (int j = 0; j < height; j++)
+            {
+                HighlightMatchesAt(i, j);
+
+            }
+        }
+    }
+
+    //method to highlight matched tiles
+    void HighlightPieces(List<GamePiece> gamePieces)
+    {
+        foreach (GamePiece piece in gamePieces)
+        {
+            if (piece != null)
+            {
+                HighlightTileOn(piece.xIndex, piece.yIndex, piece.GetComponent<SpriteRenderer>().color);
+            }
+        }
+    }
+
+    //method to clear the game piece at the given coordinate
+    void ClearGamePieceAt(int x, int y)
+    {
+        GamePiece pieceToClear = m_allGamePieces[x, y];
+
+        if (pieceToClear != null)
+        {
+            m_allGamePieces[x, y] = null;
+            Destroy(pieceToClear.gameObject);
+        }
+
+        //HighlightTileOff(x, y);
+    }
+
+    //method to clear the game pieces at the given list
+    void ClearGamePieceAt(List<GamePiece> gamePieces, List<GamePiece> bombedPieces)
+    {
+        foreach (GamePiece piece in gamePieces)
+        {
+            if (piece != null)
+            {
+                ClearGamePieceAt(piece.xIndex, piece.yIndex);
+
+                //call the clear effect
+                if (m_particleManager != null)
+                {
+                    if (bombedPieces.Contains(piece))
                     {
-                        matches.Add(nextPiece);
+                        m_particleManager.BombFXAt(piece.xIndex, piece.yIndex);
                     }
                     else
                     {
+                        m_particleManager.ClearPieceFXAt(piece.xIndex, piece.yIndex);
+                    }
+                }
+            }
+        }
+    }
+
+    //method to break the tile at the given coordinates
+    void BreakTileAt(int x, int y)
+    {
+        Tile tileToBreak = m_allTiles[x, y];
+
+        if (tileToBreak != null && tileToBreak.tileType == TileType.Breakable)
+        {
+            //call the break effect
+            //we need to call this previously, because BreakTile method decrements the breakableValue
+            if (m_particleManager != null)
+            {
+                m_particleManager.BreakPieceFXAt(tileToBreak.breakableValue, x, y, 0);
+            }
+
+            tileToBreak.BreakTile();
+        }
+
+    }
+
+    //method to break tiles at the given list
+    void BreakTileAt(List<GamePiece> gamePieces)
+    {
+        foreach (GamePiece piece in gamePieces)
+        {
+            if (piece != null)
+            {
+                //break tiles
+                BreakTileAt(piece.xIndex, piece.yIndex);
+            }
+        }
+    }
+
+    //method to collapse column when there is an empty space at the board
+    List<GamePiece> CollapseColumn(int column, float collapseTime = 0.1f)
+    {
+        List<GamePiece> movingPieces = new List<GamePiece>();
+
+        for (int i = 0; i < height; i++)
+        {
+            //found an empty space
+            if (m_allGamePieces[column, i] == null && m_allTiles[column, i].tileType != TileType.Obstacle)
+            {
+
+                for (int j = i + 1; j < height; j++)
+                {
+                    //found the first not empty tile
+                    if (m_allGamePieces[column, j] != null)
+                    {
+                        //move this game piece to the firstly found empty space (i)
+                        m_allGamePieces[column, j].Move(column, i, collapseTime * (j - i));
+                        m_allGamePieces[column, i] = m_allGamePieces[column, j];
+                        m_allGamePieces[column, i].SetCoord(column, i);
+
+                        //store the moved pieces
+                        if (!movingPieces.Contains(m_allGamePieces[column, i]))
+                        {
+                            movingPieces.Add(m_allGamePieces[column, i]);
+                        }
+
+                        m_allGamePieces[column, j] = null;
                         break;
                     }
                 }
             }
+        }
+        return movingPieces;
+    }
 
-            //return the macthes list
-            if (matches.Count >= minLength)
-            {
-                return matches;
-            }
+    //method to collapse column when there is an empty space at the board
+    List<GamePiece> CollapseColumn(List<GamePiece> gamePieces)
+    {
+        List<GamePiece> movingPieces = new List<GamePiece>();
+        List<int> columnsToCollapse = GetColumns(gamePieces);
 
-            //no matched pieces, return null
-            return null;
+        foreach (int column in columnsToCollapse)
+        {
+            movingPieces = movingPieces.Union(CollapseColumn(column)).ToList();
         }
 
-        //method to find vertically matched game pieces
-        List<GamePiece> FindVerticalMatches(int startX, int startY, int minLength = 3)
-        {   
-            //find upward matches by moving +1 on y axis
-            List<GamePiece> upwardMatches = FindMatches(startX, startY, new Vector2(0, 1), 2);
-            //find downward matches by moving -1 on y axis
-            List<GamePiece> downwardMatches = FindMatches(startX, startY, new Vector2(0, -1), 2);
+        return movingPieces;
+    }
 
-            if (upwardMatches == null)
+    //method to get list of column numbers
+    List<int> GetColumns(List<GamePiece> gamePieces)
+    {
+        List<int> columns = new List<int>();
+
+        foreach (GamePiece piece in gamePieces)
+        {
+            if (!columns.Contains(piece.xIndex))
             {
-                upwardMatches = new List<GamePiece>();
+                columns.Add(piece.xIndex);
             }
+        }
+        return columns;
+    }
 
-            if (downwardMatches == null)
+    //method to clear all game pieces on the board
+    void ClearBoard()
+    {
+        for (int i = 0; i < width; i++)
+        {
+            for (int j = 0; j < height; j++)
             {
-                downwardMatches = new List<GamePiece>();
+                ClearGamePieceAt(i, j);
             }
+        }
+    }
 
-            /*
-            //combine matches lists
-            foreach (GamePiece piece in downwardMatches)
+    //method to check all moving pieces are collapsed
+    bool isCollapsed(List<GamePiece> gamePieces)
+    {
+        foreach (GamePiece piece in gamePieces)
+        {
+            if (piece != null)
             {
-                if (!upwardMatches.Contains(piece))
+                //check the game pieces's y locationa and internal location difference 
+                //to see it is collapsed or not
+                if (piece.transform.position.y - (float)piece.yIndex > 0.001f)
                 {
-                    upwardMatches.Add(piece);
-                }
-            }
-
-            //if there is enough matches return the matches list, else null
-            return (upwardMatches.Count >= minLength) ? upwardMatches : null;
-            */
-
-            //combine matches lists
-            var combinedMatches = upwardMatches.Union(downwardMatches).ToList();
-            //if there is enough matches return the matches list, else null
-
-            return (combinedMatches.Count >= minLength) ? combinedMatches : null;
-        }
-
-        //method to find horizontally matched game pieces
-        List<GamePiece> FindHorizontalMatches(int startX, int startY, int minLength = 3)
-        {   
-            //find left matches by moving -1 on x axis
-            List<GamePiece> leftMatches = FindMatches(startX, startY, new Vector2(-1, 0), 2);
-            //find right matches by moving +11 on x axis
-            List<GamePiece> rightMatches = FindMatches(startX, startY, new Vector2(1, 0), 2);
-
-            if (leftMatches == null)
-            {
-                leftMatches = new List<GamePiece>();
-            }
-
-            if (rightMatches == null)
-            {
-                rightMatches = new List<GamePiece>();
-            }
-
-            //combine matches lists
-            var combinedMatches = rightMatches.Union(leftMatches).ToList();
-            //if there is enough matches return the matches list, else null
-
-            return (combinedMatches.Count >= minLength) ? combinedMatches : null;
-        }
-
-        //method to find matches with its coordinate values and returning as a combined matches list 
-        List<GamePiece> FindMatchesAt(int x, int y, int minLength = 3)
-        {
-            List<GamePiece> horizMatches = FindHorizontalMatches(x,y,minLength);
-            List<GamePiece> vertMatches = FindVerticalMatches(x,y,minLength);
-
-            if (horizMatches == null)
-            {
-                horizMatches = new List<GamePiece>();
-            }
-
-            if (vertMatches == null)
-            {
-                vertMatches = new List<GamePiece>();
-            }
-            var combinedMatches = horizMatches.Union(vertMatches).ToList();
-            return combinedMatches;
-        }
-
-        //method to find all matches in the given list and returning as a combined matches list 
-        List<GamePiece> FindMatchesAt(List<GamePiece> gamePieces, int minLength = 3)
-        {
-            List<GamePiece> matches = new List<GamePiece>();
-
-            foreach (GamePiece piece in gamePieces)
-            {
-                matches = matches.Union(FindMatchesAt(piece.xIndex, piece.yIndex, minLength)).ToList();
-            }
-
-            return matches;
-        }
-
-        //method to find all matches in the board
-        List<GamePiece> FindAllMatches()
-        {
-            List<GamePiece> combinedMatches = new List<GamePiece>();
-
-            for (int i = 0; i < width; i++)
-            {
-                for (int j = 0; j < height; j++)
-                {
-                    //find the match at the current coordinate
-                    List<GamePiece> matches = FindMatchesAt(i, j);
-                    //add the match to combined match list
-                    combinedMatches = combinedMatches.Union(matches).ToList();
-                }
-            }
-
-            return combinedMatches;
-        }
-
-        //method to find matches are corner in order to drop a bomb
-        bool IsCornerMatch(List<GamePiece> gamePieces)
-	{
-		bool vertical = false;
-		bool horizontal = false;
-		int xStart = -1;
-		int yStart = -1;
-
-		foreach (GamePiece piece in gamePieces)
-		{
-			if (piece !=null)
-			{
-				if (xStart == -1 || yStart == -1)
-				{
-					xStart = piece.xIndex;
-					yStart = piece.yIndex;
-					continue;
-				}
-
-				if (piece.xIndex != xStart && piece.yIndex == yStart)
-				{
-					horizontal = true;
-				}
-
-				if (piece.xIndex == xStart && piece.yIndex != yStart)
-				{
-					vertical = true;
-				}
-			}
-		}
-
-		return (horizontal && vertical);
-
-	}
-
-        //method to remove highlight on the given coordinated tile
-        void HighlightTileOff(int x, int y)
-        {
-            if(m_allTiles[x,y].tileType != TileType.Breakable)
-            {
-                SpriteRenderer spriteRenderer = m_allTiles[x,y].GetComponent<SpriteRenderer>();
-                spriteRenderer.color = new Color(spriteRenderer.color.r, spriteRenderer.color.g, spriteRenderer.color.b, 0);
-            }
-        }
-
-        //method to highlight on the given coordinated tile
-        void HighlightTileOn(int x, int y, Color col)
-        {
-            if(m_allTiles[x,y].tileType != TileType.Breakable)
-            {
-                SpriteRenderer spriteRenderer = m_allTiles[x, y].GetComponent<SpriteRenderer>();
-                spriteRenderer.color = col;
-            }
-        }
-
-        //method to find matched tiles and highlight them
-        void HighlightMatchesAt(int x, int y)
-        {   
-            HighlightTileOff(x, y);
-
-            var combinedMatches = FindMatchesAt(x, y);
-
-            if (combinedMatches.Count > 0)
-            {
-                foreach (GamePiece piece in combinedMatches)
-                {
-                    HighlightTileOn(piece.xIndex, piece.yIndex, piece.GetComponent<SpriteRenderer>().color);
+                    return false;
                 }
             }
         }
+        return true;
+    }
 
-        //method to higlight all matched tiles at the hole board
-        void HighlightMatches()
+    //method to clear and refill the game board
+    void ClearAndRefillBoard(List<GamePiece> gamePieces)
+    {
+        StartCoroutine(ClearAndRefillBoardRoutine(gamePieces));
+
+    }
+
+    //method to clear and refill the game board routine
+    IEnumerator ClearAndRefillBoardRoutine(List<GamePiece> gamePieces)
+    {
+        m_playerSwitchingEnabled = false;
+        List<GamePiece> matches = gamePieces;
+
+        do
         {
-            for (int i = 0; i < width; i++)
-            {
-                for (int j = 0; j < height; j++)
-                {
-                    HighlightMatchesAt(i, j);
-
-                }
-            }
-        }
-
-        //method to highlight matched tiles
-        void HighlightPieces(List<GamePiece> gamePieces)
-        {
-            foreach(GamePiece piece in gamePieces)
-            {
-                if(piece != null)
-                {
-                    HighlightTileOn(piece.xIndex, piece.yIndex, piece.GetComponent<SpriteRenderer>().color);
-                }
-            }
-        }
-
-        //method to clear the game piece at the given coordinate
-        void ClearGamePieceAt(int x, int y)
-        {
-            GamePiece pieceToClear = m_allGamePieces[x, y];
-
-            if (pieceToClear != null)
-            {
-                m_allGamePieces[x, y] = null;
-                Destroy(pieceToClear.gameObject);
-            }
-
-            //HighlightTileOff(x, y);
-        }
-
-        //method to clear the game pieces at the given list
-        void ClearGamePieceAt(List<GamePiece> gamePieces, List<GamePiece> bombedPieces)
-        {
-            foreach (GamePiece piece in gamePieces)
-            {
-                if (piece != null)
-                {
-                    ClearGamePieceAt(piece.xIndex, piece.yIndex);
-
-                    //call the clear effect
-                    if (m_particleManager != null)
-                    {
-                        if (bombedPieces.Contains(piece))
-                        {
-                            m_particleManager.BombFXAt(piece.xIndex, piece.yIndex);
-                        }
-                        else
-                        {
-                            m_particleManager.ClearPieceFXAt(piece.xIndex, piece.yIndex);
-                        }
-                    }
-                }
-            }
-        }
-
-        //method to break the tile at the given coordinates
-        void BreakTileAt(int x, int y)
-        {
-            Tile tileToBreak = m_allTiles[x, y];
-
-            if (tileToBreak != null && tileToBreak.tileType == TileType.Breakable)
-            {
-                //call the break effect
-                //we need to call this previously, because BreakTile method decrements the breakableValue
-                if (m_particleManager != null)
-                {
-                    m_particleManager.BreakPieceFXAt(tileToBreak.breakableValue, x, y, 0);
-                }
-
-                tileToBreak.BreakTile();
-            }
-
-        }
-
-        //method to break tiles at the given list
-        void BreakTileAt(List<GamePiece> gamePieces)
-        {
-            foreach (GamePiece piece in gamePieces)
-            {
-                if(piece != null)
-                {
-                    //break tiles
-                    BreakTileAt(piece.xIndex, piece.yIndex);
-                }
-            }
-        }
-
-        //method to collapse column when there is an empty space at the board
-        List<GamePiece> CollapseColumn(int column, float collapseTime = 0.1f)
-        {
-            List<GamePiece> movingPieces = new List<GamePiece>();
-
-            for (int i = 0; i < height; i++)
-            {
-                //found an empty space
-                if (m_allGamePieces[column, i] == null  && m_allTiles[column, i].tileType != TileType.Obstacle)
-                {
-        
-                    for (int j = i + 1; j < height; j++)
-                    {   
-                        //found the first not empty tile
-                        if (m_allGamePieces[column, j] != null)
-                        {
-                            //move this game piece to the firstly found empty space (i)
-                            m_allGamePieces[column, j].Move(column, i, collapseTime * (j-i));
-                            m_allGamePieces[column, i] = m_allGamePieces[column, j];
-                            m_allGamePieces[column, i].SetCoord(column, i);
-
-                            //store the moved pieces
-                            if (!movingPieces.Contains(m_allGamePieces[column, i]))
-                            {
-                                movingPieces.Add(m_allGamePieces[column, i]);
-                            }
-
-                            m_allGamePieces[column, j] = null;
-                            break;
-                        }
-                    }
-                }
-            }
-            return movingPieces;
-        }
-
-        //method to collapse column when there is an empty space at the board
-        List<GamePiece> CollapseColumn(List<GamePiece> gamePieces)
-        {
-            List<GamePiece> movingPieces = new List<GamePiece>();
-            List<int> columnsToCollapse = GetColumns(gamePieces);
-
-            foreach (int column in columnsToCollapse)
-            {
-                movingPieces = movingPieces.Union(CollapseColumn(column)).ToList();
-            }
-
-            return movingPieces;    
-        }
-
-        //method to get list of column numbers
-        List<int> GetColumns(List<GamePiece> gamePieces)
-        {
-            List<int> columns = new List<int>();
-
-            foreach(GamePiece piece in gamePieces)
-            {
-                if(!columns.Contains(piece.xIndex))
-                {
-                    columns.Add(piece.xIndex);
-                }
-            }
-            return columns;
-        }
-
-        //method to clear all game pieces on the board
-        void ClearBoard()
-        {
-            for (int i=0; i<width; i++)
-            {
-                for(int j=0; j<height; j++)
-                {
-                    ClearGamePieceAt(i, j);
-                }
-            }
-        }
-       
-        //method to check all moving pieces are collapsed
-        bool isCollapsed(List<GamePiece> gamePieces)
-        {
-            foreach (GamePiece piece in gamePieces)
-            {
-                if (piece != null)
-                {
-                    //check the game pieces's y locationa and internal location difference 
-                    //to see it is collapsed or not
-                    if (piece.transform.position.y - (float)piece.yIndex > 0.001f)
-                    {
-                        return false;
-                    }
-                }
-            }
-            return true;
-        }
-       
-        //method to clear and refill the game board
-        void ClearAndRefillBoard(List<GamePiece> gamePieces)
-        {
-           StartCoroutine(ClearAndRefillBoardRoutine(gamePieces));
-          
-        }
-
-        //method to clear and refill the game board routine
-        IEnumerator ClearAndRefillBoardRoutine(List<GamePiece> gamePieces)
-        {
-            m_playerSwitchingEnabled = false;
-            List<GamePiece> matches = gamePieces;
-
-            do
-            {
-                //clear and collapse
-                //wait till the ClearAndRefillBoardRoutine method completed
-                yield return StartCoroutine(ClearAndCollapseRoutine(matches));
-                //short delay
-                yield return null;
-
-                //refill the board
-                yield return StartCoroutine(RefillRoutine());
-                matches = FindAllMatches();
-                //delay
-                yield return new WaitForSeconds(0.2f);
-
-            } while(matches.Count != 0);
-
-            m_playerSwitchingEnabled = true;
-        }
-            
-        //method to clear and collapse columns routine recursively
-        IEnumerator ClearAndCollapseRoutine(List<GamePiece> gamePieces)
-        {
-            List<GamePiece> movingPieces = new List<GamePiece>();
-            List<GamePiece> matches = new List<GamePiece>();
-
-            //highlight the matched pieces
-            //HighlightPieces(gamePieces);
-
-            //short delay
-            yield return new WaitForSeconds(0.2f);
-
-            bool isFinished = false;
-
-            while (!isFinished)
-            {
-                //add the bombed game pieces to default ones clear them too
-                List<GamePiece> bombedPieces = GetBombedPieces(gamePieces);
-                gamePieces = gamePieces.Union(bombedPieces).ToList();
-                
-                //get the new bombed pieces after a bombed detected 
-                //this checks the chained bomb possibility
-                bombedPieces = GetBombedPieces(gamePieces);
-                gamePieces = gamePieces.Union(bombedPieces).ToList();
-
-                ClearGamePieceAt(gamePieces, bombedPieces);
-                BreakTileAt(gamePieces);
-
-                //add newly droped bombs to the game pieces array
-                if(m_clickedTileBomb != null)
-                {
-                    ActivateBomb(m_clickedTileBomb);
-                    m_clickedTileBomb = null;
-                }
-                if(m_targetTileBomb != null)
-                {
-                    ActivateBomb(m_targetTileBomb);
-                    m_targetTileBomb = null;
-                }
-
-
-                //delay
-                yield return new WaitForSeconds(0.25f);
-                movingPieces = CollapseColumn(gamePieces);
-
-                //waits till all of the columns are collapsed
-                while (!isCollapsed(movingPieces))
-                {
-                    //short delay
-                    yield return null;
-                }
-
-                //delay
-                yield return new WaitForSeconds(0.2f);
-
-                matches = FindMatchesAt(movingPieces);
-
-                if (matches.Count == 0)
-                {
-                    isFinished = true;
-                    break;
-                }
-                else
-                {
-                    //wait till ClearAndCollapseRoutine is completed
-                    yield return StartCoroutine(ClearAndCollapseRoutine(matches));
-                }
-            }
-
-            //short delay
-            yield return null;  
-        }
-
-        //method to refill the board after a match
-        IEnumerator RefillRoutine()
-        {
-            FillBoard(fillYOffset, fillMoveTime);
+            //clear and collapse
+            //wait till the ClearAndRefillBoardRoutine method completed
+            yield return StartCoroutine(ClearAndCollapseRoutine(matches));
             //short delay
             yield return null;
-        }
 
-        //method to get all game pieces int the specified row
-        List<GamePiece> GetRowPieces(int row)
+            //refill the board
+            yield return StartCoroutine(RefillRoutine());
+            matches = FindAllMatches();
+            //delay
+            yield return new WaitForSeconds(0.2f);
+
+        } while (matches.Count != 0);
+
+        m_playerSwitchingEnabled = true;
+    }
+
+    //method to clear and collapse columns routine recursively
+    IEnumerator ClearAndCollapseRoutine(List<GamePiece> gamePieces)
+    {
+        List<GamePiece> movingPieces = new List<GamePiece>();
+        List<GamePiece> matches = new List<GamePiece>();
+
+        //highlight the matched pieces
+        //HighlightPieces(gamePieces);
+
+        //short delay
+        yield return new WaitForSeconds(0.2f);
+
+        bool isFinished = false;
+
+        while (!isFinished)
         {
-            List<GamePiece> gamePieces = new List<GamePiece>();
+            //add the bombed game pieces to default ones clear them too
+            List<GamePiece> bombedPieces = GetBombedPieces(gamePieces);
+            gamePieces = gamePieces.Union(bombedPieces).ToList();
 
-            for(int i=0; i<width; i++)
+            //get the new bombed pieces after a bombed detected 
+            //this checks the chained bomb possibility
+            bombedPieces = GetBombedPieces(gamePieces);
+            gamePieces = gamePieces.Union(bombedPieces).ToList();
+
+            //find the last row's bottom collectibles in order to destroy them
+            List<GamePiece> collectedPieces = FindCollectiblesAt(0, true);
+            List<GamePiece> allCollectibles = FindAllCollectibles();
+            //get the collecitbles intersection with the all destroyed game pieces to eliminate blocker collectibles
+            List<GamePiece> blockerCollectibles = gamePieces.Intersect(allCollectibles).ToList();
+            collectedPieces = collectedPieces.Union(blockerCollectibles).ToList();
+            //decrement the collectible counter
+            collectibleCount -= collectedPieces.Count;
+            
+            //update the board's game pieces with collectibles
+            gamePieces = gamePieces.Union(collectedPieces).ToList();
+
+            ClearGamePieceAt(gamePieces, bombedPieces);
+            BreakTileAt(gamePieces);
+
+            //add newly droped bombs to the game pieces array
+            if (m_clickedTileBomb != null)
             {
-                if(m_allGamePieces[i, row] != null)
-                {
-                    gamePieces.Add(m_allGamePieces[i,row]);
-                }
+                ActivateBomb(m_clickedTileBomb);
+                m_clickedTileBomb = null;
+            }
+            if (m_targetTileBomb != null)
+            {
+                ActivateBomb(m_targetTileBomb);
+                m_targetTileBomb = null;
             }
 
-            return gamePieces;
-        }
 
-        //method to get all game pieces int the specified column
-        List<GamePiece> GetColumnPieces(int column)
-        {
-            List<GamePiece> gamePieces = new List<GamePiece>();
+            //delay
+            yield return new WaitForSeconds(0.25f);
+            movingPieces = CollapseColumn(gamePieces);
 
-            for(int i=0; i<height; i++)
+            //waits till all of the columns are collapsed
+            while (!isCollapsed(movingPieces))
             {
-                if(m_allGamePieces[column,i] != null)
-                {
-                    gamePieces.Add(m_allGamePieces[column,i]);
-                }
+                //short delay
+                yield return null;
             }
 
-            return gamePieces;
+            //delay
+            yield return new WaitForSeconds(0.2f);
+
+            matches = FindMatchesAt(movingPieces);
+            collectedPieces = FindCollectiblesAt(0, true); //check the collectible pieces at the bottom row, if there is then tehy should olse be removed like a match
+            matches = matches.Union(collectedPieces).ToList();
+
+            if (matches.Count == 0)
+            {
+                isFinished = true;
+                break;
+            }
+            else
+            {
+                //wait till ClearAndCollapseRoutine is completed
+                yield return StartCoroutine(ClearAndCollapseRoutine(matches));
+            }
         }
 
-        //method to get all adjacent game pieces int the specified coordinates and offset  
-        List<GamePiece> GetAdjacentPieces(int x, int y, int offset=1)
-        {
-            List<GamePiece> gamePieces = new List<GamePiece>();
+        //short delay
+        yield return null;
+    }
 
-            for(int i=x-offset; i<=x+offset; i++)
+    //method to refill the board after a match
+    IEnumerator RefillRoutine()
+    {
+        FillBoard(fillYOffset, fillMoveTime);
+        //short delay
+        yield return null;
+    }
+
+    //method to get all game pieces int the specified row
+    List<GamePiece> GetRowPieces(int row)
+    {
+        List<GamePiece> gamePieces = new List<GamePiece>();
+
+        for (int i = 0; i < width; i++)
+        {
+            if (m_allGamePieces[i, row] != null)
             {
-                for(int j=y-offset; j<=y+offset; j++)
+                gamePieces.Add(m_allGamePieces[i, row]);
+            }
+        }
+
+        return gamePieces;
+    }
+
+    //method to get all game pieces int the specified column
+    List<GamePiece> GetColumnPieces(int column)
+    {
+        List<GamePiece> gamePieces = new List<GamePiece>();
+
+        for (int i = 0; i < height; i++)
+        {
+            if (m_allGamePieces[column, i] != null)
+            {
+                gamePieces.Add(m_allGamePieces[column, i]);
+            }
+        }
+
+        return gamePieces;
+    }
+
+    //method to get all adjacent game pieces int the specified coordinates and offset  
+    List<GamePiece> GetAdjacentPieces(int x, int y, int offset = 1)
+    {
+        List<GamePiece> gamePieces = new List<GamePiece>();
+
+        for (int i = x - offset; i <= x + offset; i++)
+        {
+            for (int j = y - offset; j <= y + offset; j++)
+            {
+                if (IsWithinBounds(i, j))
                 {
-                    if(IsWithinBounds(i,j))
+                    gamePieces.Add(m_allGamePieces[i, j]);
+                }
+            }
+        }
+
+        return gamePieces;
+    }
+
+    //method to get all need to be cleared game pieces while there is a bomb
+    List<GamePiece> GetBombedPieces(List<GamePiece> gamePieces)
+    {
+        List<GamePiece> allPiecesToClear = new List<GamePiece>();
+
+        foreach (GamePiece piece in gamePieces)
+        {
+            if (piece != null)
+            {
+                List<GamePiece> piecesToClear = new List<GamePiece>(); //only for the bomb's needed to be cleared game pieces
+                Bomb bomb = piece.GetComponent<Bomb>();
+
+                //if the game pieces is a bomb, add its relevant needed to be cleared pieces to the list
+                if (bomb != null)
+                {
+                    switch (bomb.bombType)
                     {
-                        gamePieces.Add(m_allGamePieces[i,j]);
+                        case BombType.Row:
+                            piecesToClear = GetRowPieces(bomb.yIndex);
+                            break;
+
+                        case BombType.Column:
+                            piecesToClear = GetColumnPieces(bomb.xIndex);
+                            break;
+
+                        case BombType.Adjacent:
+                            piecesToClear = GetAdjacentPieces(bomb.xIndex, bomb.yIndex, 1);
+                            break;
+
+                        case BombType.Color:
+                            //TODO: add method
+                            break;
                     }
+
+                    allPiecesToClear = allPiecesToClear.Union(piecesToClear).ToList(); //unite this bomb's needed to be cleared pieces to all
+                    allPiecesToClear = RemoveCollectibles(allPiecesToClear); //eliminate collectibles from the cleared pieces by a bomb
                 }
             }
-
-            return gamePieces;
         }
 
-        //method to get all need to be cleared game pieces while there is a bomb
-        List<GamePiece> GetBombedPieces(List<GamePiece> gamePieces)
+        return allPiecesToClear;
+    }
+
+    //method to drop a bomb on board after more than 4 game pieces matched
+    //according to match type droped bomb type will be set
+    GameObject DropBomb(int x, int y, Vector2 swapDirection, List<GamePiece> gamePieces)
+    {
+        GameObject bomb = null;
+
+        if (gamePieces.Count >= 4)
         {
-            List<GamePiece> allPiecesToClear = new List<GamePiece>();
-
-            foreach(GamePiece piece in gamePieces)
+            //if it is corner match, then adjacent bomb will be dropped
+            if (IsCornerMatch(gamePieces))
             {
-                if(piece != null)
+                if (adjacentBombPrefab != null)
                 {
-                    List<GamePiece> piecesToClear = new List<GamePiece>(); //only for the bomb's needed to be cleared game pieces
-                    Bomb bomb = piece.GetComponent<Bomb>();
-
-                    //if the game pieces is a bomb, add its relevant needed to be cleared pieces to the list
-                    if(bomb != null)
-                    {
-                        switch (bomb.bombType)
-                        {
-                            case BombType.Row:
-                                piecesToClear = GetRowPieces(bomb.yIndex);
-                                break;
-
-                            case BombType.Column:
-                                piecesToClear = GetColumnPieces(bomb.xIndex);
-                                break;
-
-                            case BombType.Adjacent:
-                                piecesToClear = GetAdjacentPieces(bomb.xIndex, bomb.yIndex, 1);
-                                break;
-
-                            case BombType.Color:
-                                //TODO: add method
-                                break;
-                        }
-
-                        allPiecesToClear = allPiecesToClear.Union(piecesToClear).ToList(); //unite this bomb's needed to be cleared pieces to all
-                    }
+                    bomb = MakeBomb(adjacentBombPrefab, x, y);
                 }
             }
-
-            return allPiecesToClear;
-        }
-
-        //method to drop a bomb on board after more than 4 game pieces matched
-        //according to match type droped bomb type will be set
-        GameObject DropBomb (int x, int y, Vector2 swapDirection, List<GamePiece> gamePieces)
-        {
-            GameObject bomb = null;
-
-            if (gamePieces.Count >= 4)
+            else
             {
-                //if it is corner match, then adjacent bomb will be dropped
-                if (IsCornerMatch(gamePieces))
+                //if there is more than 5 matches color bomb will be droped
+                if (gamePieces.Count >= 5)
                 {
-                    if (adjacentBombPrefab !=null)
+                    if (colorBombPrefab != null)
                     {
-                        bomb = MakeBomb(adjacentBombPrefab, x, y);
+                        bomb = MakeBomb(colorBombPrefab, x, y);
                     }
                 }
                 else
                 {
-                    //if there is more than 5 matches color bomb will be droped
-                    if (gamePieces.Count >= 5)
+                    //if it is row match, then row bomb will be dropped
+                    if (swapDirection.x != 0)
                     {
-                        if (colorBombPrefab != null)
+                        if (rowBombPrefab != null)
                         {
-                            bomb = MakeBomb(colorBombPrefab, x, y);
+                            bomb = MakeBomb(rowBombPrefab, x, y);
                         }
+
                     }
                     else
                     {
-                        //if it is row match, then row bomb will be dropped
-                        if (swapDirection.x != 0)
+                        //if it is column match, then column bomb will be dropped
+                        if (columnBombPrefab != null)
                         {
-                            if (rowBombPrefab != null)
-                            {
-                                bomb = MakeBomb(rowBombPrefab, x, y);
-                            }
-
-                        }
-                        else
-                        {
-                            //if it is column match, then column bomb will be dropped
-                            if (columnBombPrefab != null)
-                            {
-                                bomb = MakeBomb(columnBombPrefab, x, y);
-                            }
+                            bomb = MakeBomb(columnBombPrefab, x, y);
                         }
                     }
                 }
             }
-            return bomb;
         }
+        return bomb;
+    }
 
-        //method to activate bomb by adding it to game pieces array
-        void ActivateBomb(GameObject bomb)
+    //method to activate bomb by adding it to game pieces array
+    void ActivateBomb(GameObject bomb)
+    {
+        int x = (int)bomb.transform.position.x;
+        int y = (int)bomb.transform.position.y;
+
+        if (IsWithinBounds(x, y))
         {
-            int x = (int) bomb.transform.position.x;
-            int y = (int) bomb.transform.position.y;
-
-            if (IsWithinBounds(x,y))
-            {
-                m_allGamePieces[x,y] = bomb.GetComponent<GamePiece>();
-            }
+            m_allGamePieces[x, y] = bomb.GetComponent<GamePiece>();
         }
-        
-        //method to find all game pieces on board within the given match value
-        List<GamePiece> FindAllMatchValue(MatchValue matchValue)
+    }
+
+    //method to find all game pieces on board within the given match value
+    List<GamePiece> FindAllMatchValue(MatchValue matchValue)
+    {
+
+        List<GamePiece> foundPieces = new List<GamePiece>();
+
+        //traversing the board
+        for (int i = 0; i < width; i++)
         {
-
-            List<GamePiece> foundPieces = new List<GamePiece>();
-
-            //traversing the board
-            for (int i = 0; i < width; i++)
+            for (int j = 0; j < height; j++)
             {
-                for (int j = 0; j < height; j++)
+                if (m_allGamePieces[i, j] != null)
                 {
-                    if (m_allGamePieces[i, j] != null)
-                {   
-                        //game piece with a given match value is found
-                        if (m_allGamePieces[i, j].matchValue == matchValue)
-                        {
-                            foundPieces.Add(m_allGamePieces[i, j]);
-                        }
+                    //game piece with a given match value is found
+                    if (m_allGamePieces[i, j].matchValue == matchValue)
+                    {
+                        foundPieces.Add(m_allGamePieces[i, j]);
                     }
                 }
             }
-
-            return foundPieces;
         }
-        
-        //method to check whether the game piece is a color bomb
-        bool IsColorBomb(GamePiece gamePiece)
+
+        return foundPieces;
+    }
+
+    //method to check whether the game piece is a color bomb
+    bool IsColorBomb(GamePiece gamePiece)
+    {
+        Bomb bomb = gamePiece.GetComponent<Bomb>();
+
+        //if the there is a bomb,check the whether it is color bomb or not
+        //return the result bool
+        if (bomb != null)
         {
-            Bomb bomb = gamePiece.GetComponent<Bomb>();
-            
-            //if the there is a bomb,check the whether it is color bomb or not
-            //return the result bool
-            if(bomb != null)
-            {
-                return (bomb.bombType == BombType.Color);
-            }
-
-            return false;
+            return (bomb.bombType == BombType.Color);
         }
+
+        return false;
+    }
+
+    //method to find collectible game pieces in the given row
+    List<GamePiece> FindCollectiblesAt(int row, bool clearedAtBottomOnly = false)
+    {
+
+        List<GamePiece> foundCollectibles = new List<GamePiece>();
+
+        for (int i = 0; i < width; i++)
+        {
+
+            if (m_allGamePieces[i, row] != null)
+            {
+                Collectible collectibleComponent = m_allGamePieces[i, row].GetComponent<Collectible>();
+
+                if (collectibleComponent != null)
+                {
+                    //first condition is added in order to find all collectibles if it is necessary
+                    //second condition releates to cleared at bottom component is releated to bottom collectible game pieces
+                    //if the game piece is blocker collectible then cleared at bottom component will be false and wont to be collected without a bomb
+                    if (!clearedAtBottomOnly || (clearedAtBottomOnly || collectibleComponent.clearedAtBottom))
+                    {
+                        foundCollectibles.Add(m_allGamePieces[i, row]);
+                    }
+                }
+            }
+        }
+
+        return foundCollectibles;
+    }
+
+    //method to find all collectible game pieces on the board
+    List<GamePiece> FindAllCollectibles()
+    {
+
+        List<GamePiece> foundCollectibles = new List<GamePiece>();
+
+        for (int i = 0; i < height; i++)
+        {
+            List<GamePiece> collectiblesRow = FindCollectiblesAt(i);
+            foundCollectibles = foundCollectibles.Union(collectiblesRow).ToList();
+        }
+
+        return foundCollectibles;
+    }
+
+    //method to check the board before add a collectible into
+    bool CanAddCollectible()
+    {   
+        return (Random.Range(0f, 1f) <= chanceForCollectible && 
+                                        collectiblePrefabs.Length > 0 && 
+                                        collectibleCount < maxCollectibles);
+    }
+
+    //method to eliminate bottom collectible pieces from bombed pieces
+    //in order to prevent them to destroyed by a bomb
+    List<GamePiece> RemoveCollectibles(List<GamePiece> bombedPieces)
+    {
+        List<GamePiece> collectiblePieces = FindAllCollectibles();
+        List<GamePiece> piecesToRemove = new List<GamePiece>();
+
+        foreach (GamePiece piece in collectiblePieces)
+        {
+            Collectible collectibleComponent = piece.GetComponent<Collectible>();
+
+            if (collectibleComponent != null)
+            {
+                if (!collectibleComponent.clearedByBomb)
+                {
+                    piecesToRemove.Add(piece);
+                }
+            }
+        }
+
+        return bombedPieces.Except(piecesToRemove).ToList();
+    }
 }
 
