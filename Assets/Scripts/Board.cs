@@ -45,6 +45,7 @@ public class Board : MonoBehaviour
     GameObject m_targetTileBomb;
     bool m_playerSwitchingEnabled = true;
     ParticleManager m_particleManager;
+    int m_scoreMultiplier = 0;
 
     //container for obstacle tile management
     [System.Serializable]
@@ -793,6 +794,16 @@ public class Board : MonoBehaviour
             {
                 ClearGamePieceAt(piece.xIndex, piece.yIndex);
 
+                //if the matched game pieces are more than 4, add some bonus value to the score
+                int bonus = 0;
+
+                if(gamePieces.Count >= 4)
+                {
+                    bonus = 20; //per game piece
+                }
+
+                piece.ScorePoints(m_scoreMultiplier, bonus);
+
                 //call the clear effect
                 if (m_particleManager != null)
                 {
@@ -951,6 +962,8 @@ public class Board : MonoBehaviour
 
         do
         {
+            //every time the board cleared score multiplier will be incremented (starts from 1)
+            m_scoreMultiplier++;
             //clear and collapse
             //wait till the ClearAndRefillBoardRoutine method completed
             yield return StartCoroutine(ClearAndCollapseRoutine(matches));
@@ -1046,6 +1059,8 @@ public class Board : MonoBehaviour
             }
             else
             {
+                //every time the board cleared score multiplier will be incremented (starts from 1)
+                m_scoreMultiplier++;
                 //wait till ClearAndCollapseRoutine is completed
                 yield return StartCoroutine(ClearAndCollapseRoutine(matches));
             }

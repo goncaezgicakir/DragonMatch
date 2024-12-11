@@ -16,16 +16,17 @@ public enum MatchValue
 
 public class GamePiece : MonoBehaviour {
 
+    //private variables
+    Board m_board;
+    bool m_isMoving = false;
+
     //public variables
     public int xIndex;
     public int yIndex;
     public InterpType interpolation = InterpType.SmootherStep;
     public MatchValue matchValue;
+    public int scoreValue = 20;
     
-    //private variables
-    Board m_board;
-    bool m_isMoving = false;
-
     //interpolation types
     public enum InterpType
     {
@@ -198,5 +199,11 @@ public class GamePiece : MonoBehaviour {
         matchValue = pieceToMatch.matchValue;
     }
 
-
+    public void ScorePoints(int multiplier = 1, int bonus = 0)
+    {
+        if(ScoreManager.Instance != null)
+        {
+            ScoreManager.Instance.AddScore(scoreValue * multiplier + bonus);
+        }
+    }
 }
